@@ -1,0 +1,16 @@
+node_modules
+.git
+.gitignore
+*.md
+.claude
+Christmas app.txt
+src
+*.ts
+*.tsx
+*.json
+!package.json
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
+postcss.config.js
+tailwind.config.js
