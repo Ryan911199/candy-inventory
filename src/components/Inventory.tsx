@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TreePine, Minus, Plus, Trash2, LogOut } from 'lucide-react';
+import { TreePine, Minus, Plus, Trash2, LogOut, Calendar, X } from 'lucide-react';
 import {
+  Store,
   Location,
   Item,
+  subscribeToStore,
   subscribeToItems,
   subscribeToLocations,
   createItem,
   updateItemCount,
   deleteItem,
+  updateStoreTargetDate,
+  getDefaultTargetDate,
 } from '../lib/appwrite';
 
 // Available Item Types for the "Add" menu
@@ -22,15 +26,33 @@ interface InventoryProps {
   onLogout: () => void;
 }
 
-export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
-  // Target date for the goal
-  const TARGET_DATE = new Date(new Date().getFullYear(), 11, 21); // Dec 21st
+// Format date for display (e.g., "Dec 21")
+function formatTargetDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
+// Parse date string to Date object (handling timezone correctly)
+function parseDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
+  const [store, setStore] = useState<Store | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set());
+
+  // Date picker state
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState('');
+  const [savingDate, setSavingDate] = useState(false);
+
+  // Get target date from store or use default
+  const targetDate = store?.targetDate || getDefaultTargetDate();
 
   // Calculated values
   const [grandTotal, setGrandTotal] = useState(0);
@@ -38,7 +60,18 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [rates, setRates] = useState({ totalPerDay: '0', candyPerDay: '0' });
   const [daysRemaining, setDaysRemaining] = useState(0);
 
-  // Subscribe to realtime updates
+  // Subscribe to store data
+  useEffect(() => {
+    const unsubStore = subscribeToStore(storeNumber, (storeData) => {
+      setStore(storeData);
+    });
+
+    return () => {
+      unsubStore();
+    };
+  }, [storeNumber]);
+
+  // Subscribe to realtime updates for locations and items
   useEffect(() => {
     setLoading(true);
 
@@ -57,7 +90,7 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     };
   }, [storeNumber]);
 
-  // Calculate totals and rates
+  // Calculate totals and rates based on target date
   useEffect(() => {
     let total = 0;
     const types: Record<string, number> = { candy: 0, popcorn: 0, gingerbread: 0 };
@@ -72,10 +105,10 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     setGrandTotal(total);
     setTypeTotals(types as typeof typeTotals);
 
-    // Date Math
+    // Date Math using store's target date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const target = new Date(TARGET_DATE);
+    const target = parseDate(targetDate);
 
     const diffTime = target.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -90,7 +123,7 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     } else {
       setRates({ totalPerDay: '0', candyPerDay: '0' });
     }
-  }, [items]);
+  }, [items, targetDate]);
 
   // Get items for a specific location
   const getLocationItems = useCallback((locationId: string) => {
@@ -108,6 +141,28 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
       }
       return next;
     });
+  };
+
+  // Open date picker
+  const openDatePicker = () => {
+    setTempDate(targetDate);
+    setShowDatePicker(true);
+  };
+
+  // Save new target date
+  const handleSaveDate = async () => {
+    if (!store || !tempDate) return;
+
+    setSavingDate(true);
+    try {
+      await updateStoreTargetDate(store.$id, tempDate);
+      setShowDatePicker(false);
+    } catch (error) {
+      console.error('Failed to update target date:', error);
+      alert('Failed to update target date. Please try again.');
+    } finally {
+      setSavingDate(false);
+    }
   };
 
   // Add new item
@@ -189,6 +244,53 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-40">
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Calendar size={20} className="text-red-600" />
+                Set Target Date
+              </h3>
+              <button
+                onClick={() => setShowDatePicker(false)}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-slate-500" />
+              </button>
+            </div>
+
+            <p className="text-slate-600 text-sm mb-4">
+              Choose the date you want to finish clearing all pallets for Store #{storeNumber}.
+            </p>
+
+            <input
+              type="date"
+              value={tempDate}
+              onChange={(e) => setTempDate(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl text-lg font-medium focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+            />
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowDatePicker(false)}
+                className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveDate}
+                disabled={savingDate || !tempDate}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
+              >
+                {savingDate ? 'Saving...' : 'Save Date'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Decorative Background Elements */}
       <div className="fixed top-0 left-0 w-full h-48 bg-gradient-to-b from-red-700 to-red-600 rounded-b-[2.5rem] shadow-xl z-0"></div>
 
@@ -199,15 +301,23 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
             <h1 className="text-2xl font-extrabold drop-shadow-md flex items-center">
               <TreePine className="mr-2 text-green-300" /> Pallet Tracker
             </h1>
-            <p className="text-red-100 text-xs font-medium opacity-90 pl-1">
-              Store #{storeNumber} | Target: Dec 21st
-            </p>
+            <button
+              onClick={openDatePicker}
+              className="text-red-100 text-xs font-medium opacity-90 pl-1 hover:text-white transition-colors flex items-center gap-1"
+            >
+              Store #{storeNumber} | Target: {formatTargetDate(targetDate)}
+              <Calendar size={12} className="opacity-70" />
+            </button>
           </div>
           <div className="flex items-center gap-2">
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-center border border-white/20 shadow-sm">
+            <button
+              onClick={openDatePicker}
+              className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-center border border-white/20 shadow-sm hover:bg-white/30 transition-colors"
+              title="Click to change target date"
+            >
               <div className="text-[10px] uppercase font-bold text-red-50 tracking-wider">Days Left</div>
               <div className="text-xl font-black leading-none">{daysRemaining}</div>
-            </div>
+            </button>
             <button
               onClick={onLogout}
               className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"

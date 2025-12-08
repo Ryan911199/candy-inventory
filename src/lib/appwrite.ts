@@ -21,6 +21,7 @@ export interface Store {
   $id: string;
   storeNumber: string;
   name?: string;
+  targetDate?: string; // ISO date string (e.g., "2024-12-21")
 }
 
 export interface Location {
@@ -56,6 +57,12 @@ const DEFAULT_LOCATIONS = [
   { name: 'Seasonal Floor', icon: '🎄', order: 5 },
 ];
 
+// Default target date (December 21st of current year)
+export function getDefaultTargetDate(): string {
+  const year = new Date().getFullYear();
+  return `${year}-12-21`;
+}
+
 // Store functions
 export async function getOrCreateStore(storeNumber: string): Promise<Store> {
   try {
@@ -70,12 +77,15 @@ export async function getOrCreateStore(storeNumber: string): Promise<Store> {
       return response.documents[0] as unknown as Store;
     }
 
-    // Create new store
+    // Create new store with default target date
     const store = await databases.createDocument(
       DATABASE_ID,
       STORES_COLLECTION,
       ID.unique(),
-      { storeNumber }
+      {
+        storeNumber,
+        targetDate: getDefaultTargetDate()
+      }
     );
 
     // Create default locations for the new store
@@ -98,6 +108,57 @@ export async function getOrCreateStore(storeNumber: string): Promise<Store> {
     console.error('Error getting/creating store:', error);
     throw error;
   }
+}
+
+export async function getStore(storeNumber: string): Promise<Store | null> {
+  try {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      STORES_COLLECTION,
+      [Query.equal('storeNumber', storeNumber)]
+    );
+
+    if (response.documents.length > 0) {
+      return response.documents[0] as unknown as Store;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting store:', error);
+    throw error;
+  }
+}
+
+export async function updateStoreTargetDate(storeId: string, targetDate: string): Promise<Store> {
+  try {
+    const store = await databases.updateDocument(
+      DATABASE_ID,
+      STORES_COLLECTION,
+      storeId,
+      { targetDate }
+    );
+    return store as unknown as Store;
+  } catch (error) {
+    console.error('Error updating store target date:', error);
+    throw error;
+  }
+}
+
+export function subscribeToStore(storeNumber: string, callback: (store: Store | null) => void) {
+  // Initial fetch
+  getStore(storeNumber).then(callback);
+
+  // Subscribe to realtime updates
+  const unsubscribe = client.subscribe(
+    `databases.${DATABASE_ID}.collections.${STORES_COLLECTION}.documents`,
+    (response: RealtimeResponseEvent<RealtimeDocument>) => {
+      const payload = response.payload;
+      if (!payload.storeNumber || payload.storeNumber === storeNumber) {
+        getStore(storeNumber).then(callback);
+      }
+    }
+  );
+
+  return unsubscribe;
 }
 
 // Location functions
