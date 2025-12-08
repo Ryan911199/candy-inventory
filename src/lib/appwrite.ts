@@ -1,14 +1,17 @@
-import { Client, Databases, Query, ID } from 'appwrite';
+import { Client, Databases, Query, ID, RealtimeResponseEvent, Models } from 'appwrite';
 
-// Appwrite configuration
+// Appwrite configuration from environment variables with fallbacks
+const APPWRITE_ENDPOINT = import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://backend.firefetch.org/v1';
+const APPWRITE_PROJECT_ID = import.meta.env.VITE_APPWRITE_PROJECT_ID || '69373be900166fcb421c';
+const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || 'candy-inventory';
+
 const client = new Client()
-  .setEndpoint('https://backend.firefetch.org/v1')
-  .setProject('69373be900166fcb421c');
+  .setEndpoint(APPWRITE_ENDPOINT)
+  .setProject(APPWRITE_PROJECT_ID);
 
 const databases = new Databases(client);
 
-// Database and collection IDs
-const DATABASE_ID = 'candy-inventory';
+// Collection IDs
 const STORES_COLLECTION = 'stores';
 const LOCATIONS_COLLECTION = 'locations';
 const ITEMS_COLLECTION = 'items';
@@ -36,6 +39,11 @@ export interface Item {
   type: string;
   icon: string;
   count: number;
+}
+
+// Realtime payload type
+interface RealtimeDocument extends Models.Document {
+  storeNumber?: string;
 }
 
 // Default locations for new stores
@@ -190,18 +198,20 @@ export async function deleteItem(itemId: string): Promise<void> {
   }
 }
 
-// Subscribe to realtime updates
+// Subscribe to realtime updates - optimized to only refetch for matching store
 export function subscribeToItems(storeNumber: string, callback: (items: Item[]) => void) {
   // Initial fetch
   getItems(storeNumber).then(callback);
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates with store filtering
   const unsubscribe = client.subscribe(
     `databases.${DATABASE_ID}.collections.${ITEMS_COLLECTION}.documents`,
-    () => {
-      // Refetch all items when any change happens
-      // This is simpler than trying to merge individual changes
-      getItems(storeNumber).then(callback);
+    (response: RealtimeResponseEvent<RealtimeDocument>) => {
+      // Only refetch if the change is for our store or if we can't determine the store
+      const payload = response.payload;
+      if (!payload.storeNumber || payload.storeNumber === storeNumber) {
+        getItems(storeNumber).then(callback);
+      }
     }
   );
 
@@ -212,11 +222,15 @@ export function subscribeToLocations(storeNumber: string, callback: (locations: 
   // Initial fetch
   getLocations(storeNumber).then(callback);
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates with store filtering
   const unsubscribe = client.subscribe(
     `databases.${DATABASE_ID}.collections.${LOCATIONS_COLLECTION}.documents`,
-    () => {
-      getLocations(storeNumber).then(callback);
+    (response: RealtimeResponseEvent<RealtimeDocument>) => {
+      // Only refetch if the change is for our store or if we can't determine the store
+      const payload = response.payload;
+      if (!payload.storeNumber || payload.storeNumber === storeNumber) {
+        getLocations(storeNumber).then(callback);
+      }
     }
   );
 

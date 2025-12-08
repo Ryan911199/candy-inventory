@@ -6,6 +6,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built static files
 COPY dist/ /usr/share/nginx/html/
 
+# Fix file permissions for all files
+RUN chmod -R 644 /usr/share/nginx/html/* && \
+    find /usr/share/nginx/html -type d -exec chmod 755 {} \;
+
 # Expose port
 EXPOSE 80
 
