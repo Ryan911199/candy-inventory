@@ -1,21 +1,33 @@
-# Candy Inventory - Project Guide
+# Candy Inventory (Pallet Tracker)
 
-This file provides guidance to Claude Code when working on the Candy Inventory project.
+| Property | Value |
+|----------|-------|
+| **Path** | `/home/ubuntu/ai/candy-inventory/` |
+| **URL** | https://candy.firefetch.org |
+| **Port** | 3004 |
+| **Status** | Active |
+| **Tech** | React 19, TypeScript, Vite, Tailwind v4, Appwrite |
+| **Repo** | https://github.com/Ryan911199/candy-inventory |
 
-## Project Overview
+## Quick Commands
 
-**Name:** Candy Inventory
-**Type:** Web Application
-**Location:** `/home/ubuntu/ai/candy-inventory/`
-**Description:** A simple candy inventory tracking application
+| Action | Command |
+|--------|---------|
+| Dev | `cd /home/ubuntu/ai/candy-inventory && npm run dev` |
+| Build | `npm run build` |
+| Deploy | `docker compose up -d --build` |
+| Logs | `docker logs candy-inventory --tail 50` |
+| Status | `docker ps \| grep candy` |
 
-## Purpose
+## Overview
 
-Track and manage candy inventory with features for:
-- Adding/removing candy items
-- Tracking quantities and stock levels
-- Managing candy categories
-- Inventory reporting
+Christmas pallet inventory tracker with real-time sync. Features:
+- Multi-store support (4-digit store numbers)
+- Real-time sync via Appwrite
+- Location-based inventory tracking (6 default locations)
+- Candy, Popcorn, Gingerbread item types
+- Daily clearance rate calculations
+- PWA with offline support
 
 ## Directory Structure
 
