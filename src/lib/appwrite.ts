@@ -195,6 +195,29 @@ export async function createLocation(storeNumber: string, name: string, icon: st
   }
 }
 
+export async function deleteLocation(locationId: string): Promise<void> {
+  try {
+    await databases.deleteDocument(DATABASE_ID, LOCATIONS_COLLECTION, locationId);
+  } catch (error) {
+    console.error('Error deleting location:', error);
+    throw error;
+  }
+}
+
+// Premade location options for adding new locations
+export const PREMADE_LOCATIONS = [
+  { name: 'On The Way', icon: '🚚' },
+  { name: 'Front Room', icon: '🚪' },
+  { name: 'Receiving', icon: '📥' },
+  { name: 'Sales Floor', icon: '🛒' },
+  { name: 'Layaway', icon: '📋' },
+  { name: 'Action Alley', icon: '🎯' },
+  { name: 'Pharmacy', icon: '💊' },
+  { name: 'Electronics', icon: '📱' },
+  { name: 'Frozen/Dairy', icon: '🧊' },
+  { name: 'Meat/Produce', icon: '🥩' },
+];
+
 // Item functions
 export async function getItems(storeNumber: string): Promise<Item[]> {
   try {

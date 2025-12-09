@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { TreePine, Minus, Plus, Trash2, LogOut, Calendar, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { TreePine, Minus, Plus, Trash2, LogOut, Calendar, X, MapPin, Pencil } from 'lucide-react';
 import {
   Store,
   Location,
@@ -10,9 +10,41 @@ import {
   createItem,
   updateItemCount,
   deleteItem,
+  deleteLocation,
+  createLocation,
   updateStoreTargetDate,
   getDefaultTargetDate,
+  PREMADE_LOCATIONS,
 } from '../lib/appwrite';
+
+// Floating snowflakes component - full page coverage
+function Snowflakes() {
+  const snowflakes = Array.from({ length: 20 }, (_, i) => ({
+    left: `${(i * 5) + Math.random() * 3}%`,
+    delay: i * 0.8 + Math.random() * 2,
+    duration: 12 + Math.random() * 8,
+    size: 10 + Math.random() * 14,
+  }));
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {snowflakes.map((flake, i) => (
+        <div
+          key={i}
+          className="absolute text-white/40 animate-snowfall"
+          style={{
+            left: flake.left,
+            fontSize: `${flake.size}px`,
+            animationDelay: `${flake.delay}s`,
+            animationDuration: `${flake.duration}s`,
+          }}
+        >
+          ❄
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // Available Item Types for the "Add" menu
 const ITEM_TYPES = {
@@ -44,12 +76,24 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set());
+
+  // Track pending local updates to prevent real-time overwrites during rapid clicks
+  const pendingUpdates = useRef<Map<string, { count: number; timestamp: number }>>(new Map());
+
+  // Direct count editing state
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState('');
   const [savingDate, setSavingDate] = useState(false);
+
+  // Location management state
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [customLocationName, setCustomLocationName] = useState('');
+  const [customLocationIcon, setCustomLocationIcon] = useState('📍');
+  const [addingLocation, setAddingLocation] = useState(false);
 
   // Get target date from store or use default
   const targetDate = store?.targetDate || getDefaultTargetDate();
@@ -81,7 +125,28 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     });
 
     const unsubItems = subscribeToItems(storeNumber, (itms) => {
-      setItems(itms);
+      // Merge server data with any pending local updates to prevent race conditions
+      const now = Date.now();
+      const PENDING_TIMEOUT = 3000; // Consider updates stale after 3 seconds
+
+      // Clean up stale pending updates
+      pendingUpdates.current.forEach((update, itemId) => {
+        if (now - update.timestamp > PENDING_TIMEOUT) {
+          pendingUpdates.current.delete(itemId);
+        }
+      });
+
+      // Apply pending updates on top of server data
+      const mergedItems = itms.map(item => {
+        const pending = pendingUpdates.current.get(item.$id);
+        if (pending && now - pending.timestamp <= PENDING_TIMEOUT) {
+          // Keep our local count if we have a recent pending update
+          return { ...item, count: pending.count };
+        }
+        return item;
+      });
+
+      setItems(mergedItems);
     });
 
     return () => {
@@ -188,31 +253,114 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     }
   };
 
-  // Update item count
+  // Update item count (handles rapid clicks properly)
   const handleUpdateCount = async (itemId: string, currentCount: number, delta: number) => {
-    const newCount = Math.max(0, currentCount + delta);
+    // Check if there's a pending update - use that count instead of stale state
+    const pending = pendingUpdates.current.get(itemId);
+    const baseCount = pending ? pending.count : currentCount;
+    const newCount = Math.max(0, baseCount + delta);
+
+    // Track this update as pending
+    pendingUpdates.current.set(itemId, { count: newCount, timestamp: Date.now() });
 
     // Optimistic update
     setItems(prev => prev.map(item =>
       item.$id === itemId ? { ...item, count: newCount } : item
     ));
 
-    setUpdatingItems(prev => new Set(prev).add(itemId));
-
     try {
       await updateItemCount(itemId, newCount);
+      // Update timestamp on successful save
+      const current = pendingUpdates.current.get(itemId);
+      if (current && current.count === newCount) {
+        // Clear pending if the count matches what we just saved
+        pendingUpdates.current.delete(itemId);
+      }
     } catch (error) {
       console.error('Failed to update count:', error);
-      // Revert on error
+      // Clear pending and revert on error
+      pendingUpdates.current.delete(itemId);
       setItems(prev => prev.map(item =>
         item.$id === itemId ? { ...item, count: currentCount } : item
       ));
+    }
+  };
+
+  // Handle direct count edit
+  const handleStartEdit = (item: Item) => {
+    setEditingItem(item.$id);
+    setEditValue(item.count.toString());
+  };
+
+  const handleSaveEdit = async (itemId: string, originalCount: number) => {
+    const newCount = Math.max(0, parseInt(editValue, 10) || 0);
+    setEditingItem(null);
+
+    if (newCount === originalCount) return;
+
+    // Track as pending
+    pendingUpdates.current.set(itemId, { count: newCount, timestamp: Date.now() });
+
+    // Optimistic update
+    setItems(prev => prev.map(item =>
+      item.$id === itemId ? { ...item, count: newCount } : item
+    ));
+
+    try {
+      await updateItemCount(itemId, newCount);
+      pendingUpdates.current.delete(itemId);
+    } catch (error) {
+      console.error('Failed to update count:', error);
+      pendingUpdates.current.delete(itemId);
+      setItems(prev => prev.map(item =>
+        item.$id === itemId ? { ...item, count: originalCount } : item
+      ));
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingItem(null);
+    setEditValue('');
+  };
+
+  // Add new location (premade or custom)
+  const handleAddLocation = async (name: string, icon: string) => {
+    setAddingLocation(true);
+    try {
+      const nextOrder = locations.length > 0
+        ? Math.max(...locations.map(l => l.order)) + 1
+        : 0;
+      await createLocation(storeNumber, name, icon, nextOrder);
+      setCustomLocationName('');
+      setCustomLocationIcon('📍');
+    } catch (error) {
+      console.error('Failed to add location:', error);
+      alert('Failed to add location. Please try again.');
     } finally {
-      setUpdatingItems(prev => {
-        const next = new Set(prev);
-        next.delete(itemId);
-        return next;
-      });
+      setAddingLocation(false);
+    }
+  };
+
+  // Remove location
+  const handleRemoveLocation = async (locationId: string, locationName: string) => {
+    const locationItems = items.filter(item => item.locationId === locationId);
+
+    let confirmMessage = `Remove "${locationName}"?`;
+    if (locationItems.length > 0) {
+      confirmMessage = `Remove "${locationName}" and its ${locationItems.length} item(s)? This cannot be undone.`;
+    }
+
+    if (!window.confirm(confirmMessage)) return;
+
+    // First delete all items in this location
+    try {
+      for (const item of locationItems) {
+        await deleteItem(item.$id);
+      }
+      await deleteLocation(locationId);
+    } catch (error) {
+      console.error('Failed to delete location:', error);
+      alert('Failed to delete location. Please try again.');
     }
   };
 
@@ -233,9 +381,12 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-red-50 to-green-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin h-12 w-12 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <div className="relative">
+            <div className="animate-spin h-12 w-12 border-4 border-red-500 border-t-green-500 rounded-full mx-auto mb-4"></div>
+            <span className="absolute inset-0 flex items-center justify-center text-2xl">🎄</span>
+          </div>
           <p className="text-slate-600">Loading store {storeNumber}...</p>
         </div>
       </div>
@@ -243,7 +394,11 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-40">
+    <div className="min-h-screen font-sans pb-40 relative">
+      {/* Full-page festive gradient background */}
+      <div className="fixed inset-0 bg-gradient-to-b from-red-700 via-red-600/80 to-green-700 z-0">
+        <Snowflakes />
+      </div>
       {/* Date Picker Modal */}
       {showDatePicker && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
@@ -291,8 +446,130 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
         </div>
       )}
 
-      {/* Decorative Background Elements */}
-      <div className="fixed top-0 left-0 w-full h-48 bg-gradient-to-b from-red-700 to-red-600 rounded-b-[2.5rem] shadow-xl z-0"></div>
+      {/* Location Management Modal */}
+      {showLocationModal && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden animate-in">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <MapPin size={20} className="text-blue-600" />
+                Manage Locations
+              </h3>
+              <button
+                onClick={() => setShowLocationModal(false)}
+                className="p-1 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-slate-500" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {/* Current Locations */}
+              <div className="mb-6">
+                <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">Current Locations</h4>
+                <div className="space-y-2">
+                  {locations.map(loc => (
+                    <div key={loc.$id} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{loc.icon}</span>
+                        <span className="font-medium text-slate-700">{loc.name}</span>
+                        <span className="text-xs text-slate-400">
+                          ({items.filter(i => i.locationId === loc.$id).length} items)
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveLocation(loc.$id, loc.name)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Remove location"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {locations.length === 0 && (
+                    <p className="text-slate-400 text-sm italic text-center py-2">No locations yet</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Add Premade Location */}
+              <div className="mb-6">
+                <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">Add Location</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {PREMADE_LOCATIONS.filter(
+                    pl => !locations.some(l => l.name === pl.name)
+                  ).map(pl => (
+                    <button
+                      key={pl.name}
+                      onClick={() => handleAddLocation(pl.name, pl.icon)}
+                      disabled={addingLocation}
+                      className="flex items-center gap-2 bg-white border border-slate-200 p-2 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors disabled:opacity-50"
+                    >
+                      <span className="text-lg">{pl.icon}</span>
+                      <span className="text-sm font-medium text-slate-700">{pl.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Location */}
+              <div>
+                <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">Custom Location</h4>
+                <div className="flex gap-2">
+                  <select
+                    value={customLocationIcon}
+                    onChange={(e) => setCustomLocationIcon(e.target.value)}
+                    className="w-16 px-2 py-2 border border-slate-200 rounded-lg text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
+                  >
+                    <option value="📍">📍</option>
+                    <option value="🏬">🏬</option>
+                    <option value="🏪">🏪</option>
+                    <option value="📦">📦</option>
+                    <option value="🚛">🚛</option>
+                    <option value="🎄">🎄</option>
+                    <option value="⭐">⭐</option>
+                    <option value="🔷">🔷</option>
+                    <option value="🟢">🟢</option>
+                    <option value="🟡">🟡</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={customLocationName}
+                    onChange={(e) => setCustomLocationName(e.target.value)}
+                    placeholder="Location name..."
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
+                    maxLength={30}
+                  />
+                  <button
+                    onClick={() => customLocationName.trim() && handleAddLocation(customLocationName.trim(), customLocationIcon)}
+                    disabled={!customLocationName.trim() || addingLocation}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-slate-50">
+              <button
+                onClick={() => setShowLocationModal(false)}
+                className="w-full px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-xl transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header background accent */}
+      <div className="fixed top-0 left-0 w-full h-32 bg-black/10 rounded-b-[2.5rem] z-[1] overflow-hidden">
+        {/* Subtle pattern overlay */}
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}></div>
+      </div>
 
       <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
         {/* Header */}
@@ -301,22 +578,34 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
             <h1 className="text-2xl font-extrabold drop-shadow-md flex items-center">
               <TreePine className="mr-2 text-green-300" /> Pallet Tracker
             </h1>
-            <button
-              onClick={openDatePicker}
-              className="text-red-100 text-xs font-medium opacity-90 pl-1 hover:text-white transition-colors flex items-center gap-1"
-            >
-              Store #{storeNumber} | Target: {formatTargetDate(targetDate)}
-              <Calendar size={12} className="opacity-70" />
-            </button>
+            <p className="text-red-100 text-xs font-medium opacity-90 pl-1">
+              Store #{storeNumber}
+            </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Target Date Button - More Obvious */}
             <button
               onClick={openDatePicker}
-              className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-center border border-white/20 shadow-sm hover:bg-white/30 transition-colors"
-              title="Click to change target date"
+              className="bg-white/25 backdrop-blur-sm rounded-lg px-3 py-1.5 text-center border-2 border-white/40 shadow-lg hover:bg-white/35 hover:border-white/60 transition-all group animate-pulse-slow"
+              title="Tap to change target date"
             >
-              <div className="text-[10px] uppercase font-bold text-red-50 tracking-wider">Days Left</div>
-              <div className="text-xl font-black leading-none">{daysRemaining}</div>
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-yellow-300 group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] uppercase font-bold text-white tracking-wider">Target</span>
+              </div>
+              <div className="text-lg font-black leading-none flex items-center justify-center gap-1">
+                {formatTargetDate(targetDate)}
+                <Pencil size={10} className="opacity-60" />
+              </div>
+              <div className="text-[9px] text-yellow-200 font-semibold">{daysRemaining} days left</div>
+            </button>
+            {/* Manage Locations Button */}
+            <button
+              onClick={() => setShowLocationModal(true)}
+              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+              title="Manage Locations"
+            >
+              <MapPin size={20} />
             </button>
             <button
               onClick={onLogout}
@@ -335,7 +624,7 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
             const isMenuOpen = openMenus.has(loc.$id);
 
             return (
-              <div key={loc.$id} className="bg-white rounded-xl shadow-md border border-slate-100 overflow-hidden relative">
+              <div key={loc.$id} className="bg-white/95 rounded-xl shadow-md border border-slate-100 overflow-hidden relative">
                 <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center">
                     <span className="text-xl mr-2">{loc.icon}</span>
@@ -385,20 +674,40 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
                       <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shadow-inner">
                         <button
                           onClick={() => handleUpdateCount(item.$id, item.count, -1)}
-                          disabled={updatingItems.has(item.$id)}
-                          className="w-8 h-8 flex items-center justify-center bg-white rounded-md shadow-sm text-red-500 active:bg-red-50 touch-manipulation border border-slate-200 disabled:opacity-50"
+                          className="w-8 h-8 flex items-center justify-center bg-white rounded-md shadow-sm text-red-500 active:bg-red-50 touch-manipulation border border-slate-200"
                         >
                           <Minus size={16} strokeWidth={3} />
                         </button>
 
-                        <span className="w-10 text-center font-bold text-slate-800 text-lg tabular-nums">
-                          {item.count}
-                        </span>
+                        {editingItem === item.$id ? (
+                          <div className="flex items-center">
+                            <input
+                              type="number"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEdit(item.$id, item.count);
+                                if (e.key === 'Escape') handleCancelEdit();
+                              }}
+                              onBlur={() => handleSaveEdit(item.$id, item.count)}
+                              autoFocus
+                              className="w-14 text-center font-bold text-slate-800 text-lg tabular-nums bg-white border-2 border-blue-500 rounded-md px-1 py-0 focus:outline-none"
+                              min="0"
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleStartEdit(item)}
+                            className="w-10 text-center font-bold text-slate-800 text-lg tabular-nums hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
+                            title="Tap to edit count"
+                          >
+                            {item.count}
+                          </button>
+                        )}
 
                         <button
                           onClick={() => handleUpdateCount(item.$id, item.count, 1)}
-                          disabled={updatingItems.has(item.$id)}
-                          className="w-8 h-8 flex items-center justify-center bg-green-600 rounded-md shadow-sm text-white active:bg-green-700 touch-manipulation border border-green-700 disabled:opacity-50"
+                          className="w-8 h-8 flex items-center justify-center bg-green-600 rounded-md shadow-sm text-white active:bg-green-700 touch-manipulation border border-green-700"
                         >
                           <Plus size={16} strokeWidth={3} />
                         </button>
@@ -418,10 +727,12 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
       </div>
 
       {/* Fixed Footer */}
-      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.15)] z-50 pb-safe">
+      <div className="fixed bottom-0 left-0 w-full bg-white shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.15)] z-50 pb-safe">
+        {/* Festive top border */}
+        <div className="h-1 bg-gradient-to-r from-red-500 via-green-500 to-red-500"></div>
         <div className="max-w-lg mx-auto">
           {/* Section 1: Type Breakdown */}
-          <div className="flex justify-between items-center px-4 py-2 bg-slate-50 border-b border-slate-100 h-10">
+          <div className="flex justify-between items-center px-4 py-2 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-100 h-10">
             <div className="flex items-center space-x-1.5">
               <span className="text-sm">🍬</span>
               <span className="text-xs uppercase font-bold text-slate-500">Candy:</span>
