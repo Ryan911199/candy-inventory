@@ -31,9 +31,10 @@ function Snowflakes() {
       {snowflakes.map((flake, i) => (
         <div
           key={i}
-          className="absolute text-white/40 animate-snowfall"
+          className="absolute text-white/40 animate-snowfall opacity-0"
           style={{
             left: flake.left,
+            top: '-30px',
             fontSize: `${flake.size}px`,
             animationDelay: `${flake.delay}s`,
             animationDuration: `${flake.duration}s`,

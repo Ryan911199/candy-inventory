@@ -50,6 +50,7 @@
 
 .animate-snowfall {
   animation: snowfall 10s linear infinite;
+  animation-fill-mode: both;
 }
 
 /* Slow pulse for date button */
