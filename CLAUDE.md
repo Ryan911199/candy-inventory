@@ -183,6 +183,39 @@ When working here, Claude Code should:
 - Use clear naming for candy-related entities
 - Test changes before committing
 
+## Troubleshooting
+
+### CORS Errors (Cannot connect to Appwrite)
+
+**Symptom:** Browser console shows errors like:
+```
+Access to fetch at 'https://backend.firefetch.org/v1/...' from origin 'https://candy.firefetch.org'
+has been blocked by CORS policy
+```
+
+**Cause:** The Appwrite project doesn't have web platforms configured for the app's hostname.
+
+**Fix:** Add web platforms in Appwrite Console:
+1. Open https://backend.firefetch.org/console
+2. Go to candy-inventory project (ID: `69373be900166fcb421c`)
+3. Settings → Platforms → Add Platform → Web App
+4. Add hostname: `candy.firefetch.org`
+5. Optionally add: `localhost` and `*.firefetch.org`
+
+**Detailed Guide:** See `/home/ubuntu/ai/candy-inventory/CORS-FIX-GUIDE.md`
+
+### App Not Loading
+
+1. Check if container is running: `docker ps | grep candy`
+2. Check logs: `docker logs candy-inventory --tail 50`
+3. Restart: `cd /home/ubuntu/ai/candy-inventory && docker compose restart`
+
+### Database Connection Issues
+
+1. Verify Appwrite is running: `docker ps | grep appwrite`
+2. Check Appwrite health: `curl https://backend.firefetch.org/v1/health`
+3. Verify project ID and endpoint in `src/lib/appwrite.ts`
+
 ## Quick Reference
 
 ```bash
@@ -191,8 +224,11 @@ cd /home/ubuntu/ai/candy-inventory
 
 # Return to homebase
 cd /home/ubuntu/ai
+
+# Fix CORS issues
+# See CORS-FIX-GUIDE.md for manual steps in Appwrite Console
 ```
 
 ---
 
-**Ready for your codebase!** Add your existing code and update this file with specific tech stack and commands.
+**Project Status:** Active and deployed at https://candy.firefetch.org
