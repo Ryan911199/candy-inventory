@@ -40,6 +40,7 @@ export interface Item {
   type: string;
   icon: string;
   count: number;
+  updatedAt?: string; // ISO timestamp of last count update
 }
 
 // Realtime payload type
@@ -249,7 +250,7 @@ export async function createItem(
       DATABASE_ID,
       ITEMS_COLLECTION,
       ID.unique(),
-      { locationId, storeNumber, name, type, icon, count }
+      { locationId, storeNumber, name, type, icon, count, updatedAt: new Date().toISOString() }
     );
     return item as unknown as Item;
   } catch (error) {
@@ -264,7 +265,7 @@ export async function updateItemCount(itemId: string, count: number): Promise<It
       DATABASE_ID,
       ITEMS_COLLECTION,
       itemId,
-      { count: Math.max(0, count) }
+      { count: Math.max(0, count), updatedAt: new Date().toISOString() }
     );
     return item as unknown as Item;
   } catch (error) {

@@ -71,6 +71,27 @@ function parseDate(dateStr: string): Date {
   return new Date(year, month - 1, day);
 }
 
+// Format "last updated" time - relative if <23 hours, date if older
+function formatLastUpdated(isoString?: string): string | null {
+  if (!isoString) return null;
+  
+  const updated = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - updated.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  
+  // If less than 23 hours, show relative time
+  if (diffHours < 23) {
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    return `${diffHours}h ago`;
+  }
+  
+  // Otherwise show the date (e.g., "Dec 10")
+  return updated.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [store, setStore] = useState<Store | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -96,6 +117,9 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [customLocationIcon, setCustomLocationIcon] = useState('📍');
   const [addingLocation, setAddingLocation] = useState(false);
 
+  // Ticker to refresh relative timestamps every 45 seconds
+  const [, setTick] = useState(0);
+
   // Get target date from store or use default
   const targetDate = store?.targetDate || getDefaultTargetDate();
 
@@ -104,6 +128,14 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [typeTotals, setTypeTotals] = useState({ candy: 0, popcorn: 0, gingerbread: 0 });
   const [rates, setRates] = useState({ totalPerDay: '0', candyPerDay: '0' });
   const [daysRemaining, setDaysRemaining] = useState(0);
+
+  // Refresh relative timestamps every 45 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 45000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Subscribe to store data
   useEffect(() => {
@@ -669,6 +701,11 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
                         <span className="text-xl" role="img" aria-label={item.name}>{item.icon}</span>
                         <div className="flex flex-col">
                           <span className="text-slate-700 font-bold text-sm">{item.name}</span>
+                          {formatLastUpdated(item.updatedAt) && (
+                            <span className="text-[10px] text-slate-400 leading-tight">
+                              {formatLastUpdated(item.updatedAt)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
