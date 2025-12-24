@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TreePine, Minus, Plus, Trash2, LogOut, Calendar, X, MapPin, Pencil } from 'lucide-react';
+import { Minus, Plus, Trash2, LogOut, Calendar, X, MapPin, Pencil } from 'lucide-react';
 import {
   Store,
   Location,
@@ -16,47 +16,63 @@ import {
   getDefaultTargetDate,
   PREMADE_LOCATIONS,
 } from '../lib/appwrite';
+import { HolidayId, HOLIDAYS } from '../lib/holidays';
 
-// Floating snowflakes component - full page coverage
-function Snowflakes() {
-  const snowflakes = Array.from({ length: 20 }, (_, i) => ({
+// Floating animation component - adapts to holiday
+function FloatingDecor({ holidayId }: { holidayId: HolidayId }) {
+  const items = Array.from({ length: 20 }, (_, i) => ({
     left: `${(i * 5) + Math.random() * 3}%`,
     delay: i * 0.8 + Math.random() * 2,
     duration: 12 + Math.random() * 8,
     size: 10 + Math.random() * 14,
   }));
 
+  const getSymbol = () => {
+    switch (holidayId) {
+      case 'christmas': return '❄';
+      case 'valentines': return '♥';
+      case 'easter': return '✿';
+      case 'halloween': return '🦇';
+      default: return '❄';
+    }
+  };
+
+  const getAnimationClass = () => {
+    switch (holidayId) {
+      case 'christmas': return 'animate-snowfall';
+      case 'valentines': return 'animate-hearts';
+      case 'easter': return 'animate-eggs';
+      case 'halloween': return 'animate-bats';
+      default: return 'animate-snowfall';
+    }
+  };
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {snowflakes.map((flake, i) => (
+      {items.map((item, i) => (
         <div
           key={i}
-          className="absolute text-white/40 animate-snowfall opacity-0"
+          className={`absolute text-white/40 ${getAnimationClass()} opacity-0`}
           style={{
-            left: flake.left,
+            left: item.left,
             top: '-30px',
-            fontSize: `${flake.size}px`,
-            animationDelay: `${flake.delay}s`,
-            animationDuration: `${flake.duration}s`,
+            fontSize: `${item.size}px`,
+            animationDelay: `${item.delay}s`,
+            animationDuration: `${item.duration}s`,
           }}
         >
-          ❄
+          {getSymbol()}
         </div>
       ))}
     </div>
   );
 }
 
-// Available Item Types for the "Add" menu
-const ITEM_TYPES = {
-  candy: { name: 'Candy', type: 'candy', icon: '🍬' },
-  popcorn: { name: 'Popcorn', type: 'popcorn', icon: '🍿' },
-  gingerbread: { name: 'Gingerbread', type: 'gingerbread', icon: '🍪' }
-};
-
 interface InventoryProps {
   storeNumber: string;
+  holidayId: HolidayId;
   onLogout: () => void;
+  onSwitchHoliday: () => void;
 }
 
 // Format date for display (e.g., "Dec 21")
@@ -92,7 +108,13 @@ function formatLastUpdated(isoString?: string): string | null {
   return updated.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
+export default function Inventory({ storeNumber, holidayId, onLogout, onSwitchHoliday }: InventoryProps) {
+  // Get holiday configuration
+  const holiday = HOLIDAYS[holidayId];
+  const { theme, palletTypes } = holiday;
+  
+  // Convert palletTypes object to array for iteration
+  const ITEM_TYPES = palletTypes;
   const [store, setStore] = useState<Store | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -121,13 +143,17 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   const [, setTick] = useState(0);
 
   // Get target date from store or use default
-  const targetDate = store?.targetDate || getDefaultTargetDate();
+  const targetDate = store?.targetDate || getDefaultTargetDate(holidayId);
 
   // Calculated values
   const [grandTotal, setGrandTotal] = useState(0);
-  const [typeTotals, setTypeTotals] = useState({ candy: 0, popcorn: 0, gingerbread: 0 });
-  const [rates, setRates] = useState({ totalPerDay: '0', candyPerDay: '0' });
+  const [typeTotals, setTypeTotals] = useState<Record<string, number>>({});
+  const [rates, setRates] = useState({ totalPerDay: '0', primaryPerDay: '0' });
   const [daysRemaining, setDaysRemaining] = useState(0);
+  
+  // Get primary pallet type info for stats display
+  const primaryTypeKey = Object.keys(ITEM_TYPES)[0] || 'candy';
+  const primaryType = ITEM_TYPES[primaryTypeKey];
 
   // Refresh relative timestamps every 45 seconds
   useEffect(() => {
@@ -139,14 +165,14 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
   // Subscribe to store data
   useEffect(() => {
-    const unsubStore = subscribeToStore(storeNumber, (storeData) => {
+    const unsubStore = subscribeToStore(storeNumber, holidayId, (storeData: Store | null) => {
       setStore(storeData);
     });
 
     return () => {
       unsubStore();
     };
-  }, [storeNumber]);
+  }, [storeNumber, holidayId]);
 
   // Subscribe to realtime updates for locations and items
   useEffect(() => {
@@ -180,18 +206,22 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
       });
 
       setItems(mergedItems);
-    });
+    }, holidayId);
 
     return () => {
       unsubLocations();
       unsubItems();
     };
-  }, [storeNumber]);
+  }, [storeNumber, holidayId]);
 
   // Calculate totals and rates based on target date
   useEffect(() => {
     let total = 0;
-    const types: Record<string, number> = { candy: 0, popcorn: 0, gingerbread: 0 };
+    // Initialize type counts dynamically based on holiday pallet types
+    const types: Record<string, number> = {};
+    Object.keys(ITEM_TYPES).forEach(key => {
+      types[key] = 0;
+    });
 
     items.forEach(item => {
       total += item.count;
@@ -201,7 +231,7 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
     });
 
     setGrandTotal(total);
-    setTypeTotals(types as typeof typeTotals);
+    setTypeTotals(types);
 
     // Date Math using store's target date
     const today = new Date();
@@ -213,15 +243,18 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
     setDaysRemaining(diffDays);
 
+    // Get primary type for rate calculation
+    const primaryTypeForCalc = Object.keys(ITEM_TYPES)[0] || 'candy';
+    
     if (diffDays > 0) {
       setRates({
         totalPerDay: (total / diffDays).toFixed(1),
-        candyPerDay: (types.candy / diffDays).toFixed(1)
+        primaryPerDay: ((types[primaryTypeForCalc] || 0) / diffDays).toFixed(1)
       });
     } else {
-      setRates({ totalPerDay: '0', candyPerDay: '0' });
+      setRates({ totalPerDay: '0', primaryPerDay: '0' });
     }
-  }, [items, targetDate]);
+  }, [items, targetDate, ITEM_TYPES]);
 
   // Get items for a specific location
   const getLocationItems = useCallback((locationId: string) => {
@@ -264,8 +297,10 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
   };
 
   // Add new item
-  const handleAddItem = async (locationId: string, typeKey: keyof typeof ITEM_TYPES) => {
+  const handleAddItem = async (locationId: string, typeKey: string) => {
     const template = ITEM_TYPES[typeKey];
+    if (!template) return;
+    
     setOpenMenus(prev => {
       const next = new Set(prev);
       next.delete(locationId);
@@ -279,7 +314,8 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
         template.name,
         template.type,
         template.icon,
-        0
+        0,
+        holidayId
       );
     } catch (error) {
       console.error('Failed to add item:', error);
@@ -414,23 +450,26 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-red-50 to-green-50 flex items-center justify-center">
+      <div className={`min-h-screen bg-gradient-to-b ${theme.gradientFrom} ${theme.gradientTo} flex items-center justify-center`}>
         <div className="text-center">
           <div className="relative">
-            <div className="animate-spin h-12 w-12 border-4 border-red-500 border-t-green-500 rounded-full mx-auto mb-4"></div>
-            <span className="absolute inset-0 flex items-center justify-center text-2xl">🎄</span>
+            <div className="animate-spin h-12 w-12 border-4 border-white/50 border-t-white rounded-full mx-auto mb-4"></div>
+            <span className="absolute inset-0 flex items-center justify-center text-2xl">{holiday.icon}</span>
           </div>
-          <p className="text-slate-600">Loading store {storeNumber}...</p>
+          <p className="text-white/80">Loading store {storeNumber}...</p>
         </div>
       </div>
     );
   }
 
+  // Get gradient classes based on holiday theme
+  const gradientClass = `${theme.gradientFrom} ${theme.gradientVia} ${theme.gradientTo}`;
+
   return (
     <div className="min-h-screen font-sans pb-40 relative">
       {/* Full-page festive gradient background */}
-      <div className="fixed inset-0 bg-gradient-to-b from-red-700 via-red-600/80 to-green-700 z-0">
-        <Snowflakes />
+      <div className={`fixed inset-0 bg-gradient-to-b ${gradientClass} z-0`}>
+        <FloatingDecor holidayId={holidayId} />
       </div>
       {/* Date Picker Modal */}
       {showDatePicker && (
@@ -609,10 +648,10 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
         <header className="flex items-center justify-between mb-5 text-white">
           <div>
             <h1 className="text-2xl font-extrabold drop-shadow-md flex items-center">
-              <TreePine className="mr-2 text-green-300" /> Pallet Tracker
+              <span className="mr-2 text-3xl">{holiday.icon}</span> Pallet Tracker
             </h1>
-            <p className="text-red-100 text-xs font-medium opacity-90 pl-1">
-              Store #{storeNumber}
+            <p className="text-white/80 text-xs font-medium opacity-90 pl-1">
+              Store #{storeNumber} - {holiday.shortName}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -623,14 +662,14 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
               title="Tap to change target date"
             >
               <div className="flex items-center gap-1.5">
-                <Calendar size={14} className="text-yellow-300 group-hover:scale-110 transition-transform" />
+                <Calendar size={14} className="text-white group-hover:scale-110 transition-transform" />
                 <span className="text-[10px] uppercase font-bold text-white tracking-wider">Target</span>
               </div>
               <div className="text-lg font-black leading-none flex items-center justify-center gap-1">
                 {formatTargetDate(targetDate)}
                 <Pencil size={10} className="opacity-60" />
               </div>
-              <div className="text-[9px] text-yellow-200 font-semibold">{daysRemaining} days left</div>
+              <div className="text-[9px] text-white/80 font-semibold">{daysRemaining} days left</div>
             </button>
             {/* Manage Locations Button */}
             <button
@@ -646,6 +685,13 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
               title="Switch Store"
             >
               <LogOut size={20} />
+            </button>
+            <button
+              onClick={onSwitchHoliday}
+              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+              title="Switch Holiday"
+            >
+              <span className="text-lg">{holiday.icon}</span>
             </button>
           </div>
         </header>
@@ -766,32 +812,21 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
 
       {/* Fixed Footer */}
       <div className="fixed bottom-0 left-0 w-full bg-white shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.15)] z-50 pb-safe">
-        {/* Festive top border */}
-        <div className="h-1 bg-gradient-to-r from-red-500 via-green-500 to-red-500"></div>
+        {/* Festive top border - dynamic based on holiday */}
+        <div className={`h-1 bg-gradient-to-r ${theme.footerBorder}`}></div>
         <div className="max-w-lg mx-auto">
-          {/* Section 1: Type Breakdown */}
-          <div className="flex justify-between items-center px-4 py-2 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-100 h-10">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-sm">🍬</span>
-              <span className="text-xs uppercase font-bold text-slate-500">Candy:</span>
-              <span className="font-bold text-slate-800 text-sm">{typeTotals.candy}</span>
-            </div>
-
-            <div className="w-px h-4 bg-slate-300"></div>
-
-            <div className="flex items-center space-x-1.5">
-              <span className="text-sm">🍿</span>
-              <span className="text-xs uppercase font-bold text-slate-500">Pop:</span>
-              <span className="font-bold text-slate-800 text-sm">{typeTotals.popcorn}</span>
-            </div>
-
-            <div className="w-px h-4 bg-slate-300"></div>
-
-            <div className="flex items-center space-x-1.5">
-              <span className="text-sm">🍪</span>
-              <span className="text-xs uppercase font-bold text-slate-500">Cookie:</span>
-              <span className="font-bold text-slate-800 text-sm">{typeTotals.gingerbread}</span>
-            </div>
+          {/* Section 1: Type Breakdown - Dynamic based on holiday pallet types */}
+          <div className="flex justify-between items-center px-4 py-2 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-100 h-10 overflow-x-auto">
+            {Object.entries(ITEM_TYPES).map(([key, palletType], index) => (
+              <div key={key} className="flex items-center">
+                {index > 0 && <div className="w-px h-4 bg-slate-300 mx-2"></div>}
+                <div className="flex items-center space-x-1.5 whitespace-nowrap">
+                  <span className="text-sm">{palletType.icon}</span>
+                  <span className="text-xs uppercase font-bold text-slate-500">{palletType.name.slice(0, 6)}:</span>
+                  <span className="font-bold text-slate-800 text-sm">{typeTotals[key] || 0}</span>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Section 2: Goals & Stats */}
@@ -805,20 +840,20 @@ export default function Inventory({ storeNumber, onLogout }: InventoryProps) {
                 <span className="text-xl font-black text-slate-800 leading-none">{grandTotal}</span>
               </div>
 
-              {/* Candy Per Day Goal */}
-              <div className="bg-red-50 border border-red-100 rounded-lg flex flex-col items-center justify-center shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-red-500 tracking-tight leading-none mb-1 flex items-center gap-1">
-                  <span className="text-base">🍬</span> Candy/Day
+              {/* Primary Type Per Day Goal */}
+              <div className={`${theme.statsPrimaryBg} border rounded-lg flex flex-col items-center justify-center shadow-sm`}>
+                <span className={`text-[10px] uppercase font-bold ${theme.statsPrimaryText} tracking-tight leading-none mb-1 flex items-center gap-1`}>
+                  <span className="text-base">{primaryType.icon}</span> {primaryType.name.slice(0, 5)}/Day
                 </span>
-                <span className="text-xl font-black text-red-600 leading-none">{rates.candyPerDay}</span>
+                <span className={`text-xl font-black ${theme.statsPrimaryText} leading-none`}>{rates.primaryPerDay}</span>
               </div>
 
               {/* Total Per Day Goal */}
-              <div className="bg-green-50 border border-green-100 rounded-lg flex flex-col items-center justify-center shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-green-700 tracking-tight leading-none mb-1 flex items-center gap-1">
-                  <span className="text-base">📅</span> Total/Day
+              <div className={`${theme.statsSecondaryBg} border rounded-lg flex flex-col items-center justify-center shadow-sm`}>
+                <span className={`text-[10px] uppercase font-bold ${theme.statsSecondaryText} tracking-tight leading-none mb-1 flex items-center gap-1`}>
+                  <span className="text-base">{holiday.icon}</span> Total/Day
                 </span>
-                <span className="text-xl font-black text-green-700 leading-none">{rates.totalPerDay}</span>
+                <span className={`text-xl font-black ${theme.statsSecondaryText} leading-none`}>{rates.totalPerDay}</span>
               </div>
             </div>
           </div>

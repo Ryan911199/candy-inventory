@@ -1,4 +1,5 @@
 import { Client, Databases, Query, ID, RealtimeResponseEvent, Models } from 'appwrite';
+import { HolidayId, getHolidayTargetDate } from './holidays';
 
 // Appwrite configuration from environment variables with fallbacks
 const APPWRITE_ENDPOINT = import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://backend.firefetch.org/v1';
@@ -22,6 +23,7 @@ export interface Store {
   storeNumber: string;
   name?: string;
   targetDate?: string; // ISO date string (e.g., "2024-12-21")
+  holiday?: HolidayId; // Which holiday this store config is for
 }
 
 export interface Location {
@@ -41,6 +43,7 @@ export interface Item {
   icon: string;
   count: number;
   updatedAt?: string; // ISO timestamp of last count update
+  holiday?: HolidayId; // Which holiday this item belongs to
 }
 
 // Realtime payload type
@@ -58,38 +61,108 @@ const DEFAULT_LOCATIONS = [
   { name: 'Seasonal Floor', icon: '🎄', order: 5 },
 ];
 
-// Default target date (December 21st of current year)
-export function getDefaultTargetDate(): string {
+// Default target date (December 21st of current year) - kept for backwards compatibility
+export function getDefaultTargetDate(holidayId?: HolidayId): string {
+  if (holidayId) {
+    return getHolidayTargetDate(holidayId);
+  }
   const year = new Date().getFullYear();
   return `${year}-12-21`;
 }
 
 // Store functions
-export async function getOrCreateStore(storeNumber: string): Promise<Store> {
+export async function getOrCreateStore(storeNumber: string, holidayId: HolidayId = 'christmas'): Promise<Store> {
   try {
-    // Try to find existing store
-    const response = await databases.listDocuments(
+    // First, get all stores for this store number
+    const allStoresResponse = await databases.listDocuments(
       DATABASE_ID,
       STORES_COLLECTION,
       [Query.equal('storeNumber', storeNumber)]
     );
 
-    if (response.documents.length > 0) {
-      return response.documents[0] as unknown as Store;
-    }
-
-    // Create new store with default target date
-    const store = await databases.createDocument(
-      DATABASE_ID,
-      STORES_COLLECTION,
-      ID.unique(),
-      {
-        storeNumber,
-        targetDate: getDefaultTargetDate()
-      }
+    // Look for a store that matches our holiday
+    const existingStore = allStoresResponse.documents.find(
+      (doc) => doc.holiday === holidayId
     );
 
-    // Create default locations for the new store
+    if (existingStore) {
+      return existingStore as unknown as Store;
+    }
+
+    // Check for legacy store (no holiday field) - migrate if looking for christmas
+    const legacyStore = allStoresResponse.documents.find(
+      (doc) => !doc.holiday
+    );
+
+    if (legacyStore && holidayId === 'christmas') {
+      // Migrate legacy store to christmas
+      try {
+        const updated = await databases.updateDocument(
+          DATABASE_ID,
+          STORES_COLLECTION,
+          legacyStore.$id,
+          { holiday: 'christmas' }
+        );
+        return updated as unknown as Store;
+      } catch (updateError) {
+        // If update fails (holiday field doesn't exist in schema), just use the legacy store as-is
+        console.warn('Could not add holiday field to legacy store, using as-is:', updateError);
+        return legacyStore as unknown as Store;
+      }
+    }
+
+    // Create new store with holiday-specific target date
+    let storeData: Record<string, unknown> = {
+      storeNumber,
+      targetDate: getDefaultTargetDate(holidayId)
+    };
+
+    // Try to include holiday field - if schema doesn't support it, we'll catch the error
+    try {
+      const store = await databases.createDocument(
+        DATABASE_ID,
+        STORES_COLLECTION,
+        ID.unique(),
+        {
+          ...storeData,
+          holiday: holidayId
+        }
+      );
+
+      // Create default locations for the new store (only if this is the first store for this number)
+      await createDefaultLocationsIfNeeded(storeNumber);
+
+      return store as unknown as Store;
+    } catch (createError) {
+      // If creating with holiday field fails, try without it
+      console.warn('Could not create store with holiday field, trying without:', createError);
+      
+      const store = await databases.createDocument(
+        DATABASE_ID,
+        STORES_COLLECTION,
+        ID.unique(),
+        storeData
+      );
+
+      await createDefaultLocationsIfNeeded(storeNumber);
+
+      return store as unknown as Store;
+    }
+  } catch (error) {
+    console.error('Error getting/creating store:', error);
+    throw error;
+  }
+}
+
+// Helper function to create default locations if none exist
+async function createDefaultLocationsIfNeeded(storeNumber: string): Promise<void> {
+  const existingLocations = await databases.listDocuments(
+    DATABASE_ID,
+    LOCATIONS_COLLECTION,
+    [Query.equal('storeNumber', storeNumber), Query.limit(1)]
+  );
+
+  if (existingLocations.documents.length === 0) {
     for (const loc of DEFAULT_LOCATIONS) {
       await databases.createDocument(
         DATABASE_ID,
@@ -103,20 +176,20 @@ export async function getOrCreateStore(storeNumber: string): Promise<Store> {
         }
       );
     }
-
-    return store as unknown as Store;
-  } catch (error) {
-    console.error('Error getting/creating store:', error);
-    throw error;
   }
 }
 
-export async function getStore(storeNumber: string): Promise<Store | null> {
+export async function getStore(storeNumber: string, holidayId?: HolidayId): Promise<Store | null> {
   try {
+    const queries = [Query.equal('storeNumber', storeNumber)];
+    if (holidayId) {
+      queries.push(Query.equal('holiday', holidayId));
+    }
+    
     const response = await databases.listDocuments(
       DATABASE_ID,
       STORES_COLLECTION,
-      [Query.equal('storeNumber', storeNumber)]
+      queries
     );
 
     if (response.documents.length > 0) {
@@ -144,9 +217,9 @@ export async function updateStoreTargetDate(storeId: string, targetDate: string)
   }
 }
 
-export function subscribeToStore(storeNumber: string, callback: (store: Store | null) => void) {
+export function subscribeToStore(storeNumber: string, holidayId: HolidayId, callback: (store: Store | null) => void) {
   // Initial fetch
-  getStore(storeNumber).then(callback);
+  getStore(storeNumber, holidayId).then(callback);
 
   // Subscribe to realtime updates
   const unsubscribe = client.subscribe(
@@ -154,7 +227,7 @@ export function subscribeToStore(storeNumber: string, callback: (store: Store | 
     (response: RealtimeResponseEvent<RealtimeDocument>) => {
       const payload = response.payload;
       if (!payload.storeNumber || payload.storeNumber === storeNumber) {
-        getStore(storeNumber).then(callback);
+        getStore(storeNumber, holidayId).then(callback);
       }
     }
   );
@@ -220,15 +293,21 @@ export const PREMADE_LOCATIONS = [
 ];
 
 // Item functions
-export async function getItems(storeNumber: string): Promise<Item[]> {
+export async function getItems(storeNumber: string, holidayId?: HolidayId): Promise<Item[]> {
   try {
+    const queries = [
+      Query.equal('storeNumber', storeNumber),
+      Query.limit(500)
+    ];
+    
+    if (holidayId) {
+      queries.push(Query.equal('holiday', holidayId));
+    }
+    
     const response = await databases.listDocuments(
       DATABASE_ID,
       ITEMS_COLLECTION,
-      [
-        Query.equal('storeNumber', storeNumber),
-        Query.limit(500)
-      ]
+      queries
     );
     return response.documents as unknown as Item[];
   } catch (error) {
@@ -243,14 +322,29 @@ export async function createItem(
   name: string,
   type: string,
   icon: string,
-  count: number = 0
+  count: number = 0,
+  holidayId?: HolidayId
 ): Promise<Item> {
   try {
+    const data: Record<string, unknown> = {
+      locationId,
+      storeNumber,
+      name,
+      type,
+      icon,
+      count,
+      updatedAt: new Date().toISOString()
+    };
+    
+    if (holidayId) {
+      data.holiday = holidayId;
+    }
+    
     const item = await databases.createDocument(
       DATABASE_ID,
       ITEMS_COLLECTION,
       ID.unique(),
-      { locationId, storeNumber, name, type, icon, count, updatedAt: new Date().toISOString() }
+      data
     );
     return item as unknown as Item;
   } catch (error) {
@@ -284,9 +378,9 @@ export async function deleteItem(itemId: string): Promise<void> {
 }
 
 // Subscribe to realtime updates - optimized to only refetch for matching store
-export function subscribeToItems(storeNumber: string, callback: (items: Item[]) => void) {
+export function subscribeToItems(storeNumber: string, callback: (items: Item[]) => void, holidayId?: HolidayId) {
   // Initial fetch
-  getItems(storeNumber).then(callback);
+  getItems(storeNumber, holidayId).then(callback);
 
   // Subscribe to realtime updates with store filtering
   const unsubscribe = client.subscribe(
@@ -295,7 +389,7 @@ export function subscribeToItems(storeNumber: string, callback: (items: Item[]) 
       // Only refetch if the change is for our store or if we can't determine the store
       const payload = response.payload;
       if (!payload.storeNumber || payload.storeNumber === storeNumber) {
-        getItems(storeNumber).then(callback);
+        getItems(storeNumber, holidayId).then(callback);
       }
     }
   );

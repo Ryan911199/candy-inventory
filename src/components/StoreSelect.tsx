@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
-import { TreePine, Snowflake } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
+import { HolidayId, HOLIDAYS } from '../lib/holidays';
 
 interface StoreSelectProps {
   onStoreSelect: (storeNumber: string) => void;
   isLoading: boolean;
+  holidayId: HolidayId;
+  onSwitchHoliday: () => void;
 }
 
-export default function StoreSelect({ onStoreSelect, isLoading }: StoreSelectProps) {
+export default function StoreSelect({ onStoreSelect, isLoading, holidayId, onSwitchHoliday }: StoreSelectProps) {
   const [storeNumber, setStoreNumber] = useState('');
   const [error, setError] = useState('');
+  
+  const holiday = HOLIDAYS[holidayId];
+  const { theme } = holiday;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,39 +39,78 @@ export default function StoreSelect({ onStoreSelect, isLoading }: StoreSelectPro
     if (error) setError('');
   };
 
+  // Dynamic gradient based on holiday
+  const gradientClass = `${theme.gradientFrom} ${theme.gradientVia} ${theme.gradientTo}`;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-700 via-red-600 to-red-800 flex flex-col items-center justify-center p-4">
-      {/* Decorative snowflakes */}
-      <div className="absolute top-10 left-10 text-white/20">
-        <Snowflake size={40} />
-      </div>
-      <div className="absolute top-20 right-16 text-white/15">
-        <Snowflake size={24} />
-      </div>
-      <div className="absolute bottom-32 left-20 text-white/10">
-        <Snowflake size={32} />
-      </div>
-      <div className="absolute bottom-20 right-10 text-white/20">
-        <Snowflake size={28} />
+    <div className={`min-h-screen bg-gradient-to-b ${gradientClass} flex flex-col items-center justify-center p-4`}>
+      {/* Back button */}
+      <button
+        onClick={onSwitchHoliday}
+        className="absolute top-4 left-4 flex items-center gap-1 text-white/80 hover:text-white transition-colors z-10"
+      >
+        <ChevronLeft size={20} />
+        <span className="text-sm font-medium">Change Holiday</span>
+      </button>
+
+      {/* Decorative elements based on holiday */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {holidayId === 'christmas' && (
+          <>
+            <div className="absolute top-10 left-10 text-white/20 text-4xl">*</div>
+            <div className="absolute top-20 right-16 text-white/15 text-2xl">*</div>
+            <div className="absolute bottom-32 left-20 text-white/10 text-3xl">*</div>
+            <div className="absolute bottom-20 right-10 text-white/20 text-3xl">*</div>
+          </>
+        )}
+        {holidayId === 'valentines' && (
+          <>
+            <div className="absolute top-10 left-10 text-white/20 text-3xl animate-pulse">&#10084;</div>
+            <div className="absolute top-24 right-12 text-white/15 text-2xl animate-pulse" style={{ animationDelay: '0.3s' }}>&#10084;</div>
+            <div className="absolute bottom-28 left-16 text-white/10 text-2xl animate-pulse" style={{ animationDelay: '0.6s' }}>&#10084;</div>
+            <div className="absolute bottom-16 right-8 text-white/20 text-3xl animate-pulse" style={{ animationDelay: '0.9s' }}>&#10084;</div>
+          </>
+        )}
+        {holidayId === 'easter' && (
+          <>
+            <div className="absolute top-10 left-10 text-white/20 text-3xl">&#128048;</div>
+            <div className="absolute top-20 right-16 text-white/15 text-2xl">&#128049;</div>
+            <div className="absolute bottom-32 left-20 text-white/10 text-2xl">&#129370;</div>
+            <div className="absolute bottom-20 right-10 text-white/20 text-2xl">&#129370;</div>
+          </>
+        )}
+        {holidayId === 'halloween' && (
+          <>
+            <div className="absolute top-10 left-10 text-white/20 text-3xl">&#127875;</div>
+            <div className="absolute top-20 right-16 text-white/15 text-2xl">&#128123;</div>
+            <div className="absolute bottom-32 left-20 text-white/10 text-2xl">&#129415;</div>
+            <div className="absolute bottom-20 right-10 text-white/20 text-2xl">&#127875;</div>
+          </>
+        )}
       </div>
 
       {/* Main card */}
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full relative overflow-hidden">
-        {/* Top decoration */}
-        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-green-500 via-red-500 to-green-500"></div>
+        {/* Top decoration - matches holiday theme */}
+        <div className={`absolute top-0 left-0 right-0 h-2 bg-gradient-to-r ${theme.footerBorder}`}></div>
 
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="bg-green-100 p-4 rounded-full">
-              <TreePine className="text-green-600" size={48} />
+            <div className={`p-4 rounded-full ${
+              holidayId === 'christmas' ? 'bg-green-100' :
+              holidayId === 'valentines' ? 'bg-pink-100' :
+              holidayId === 'easter' ? 'bg-purple-100' :
+              'bg-orange-100'
+            }`}>
+              <span className="text-5xl">{holiday.icon}</span>
             </div>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800 mb-2">
             Pallet Tracker
           </h1>
           <p className="text-slate-500 text-sm">
-            Christmas Inventory Management
+            {holiday.description}
           </p>
         </div>
 
@@ -81,7 +126,12 @@ export default function StoreSelect({ onStoreSelect, isLoading }: StoreSelectPro
             value={storeNumber}
             onChange={handleChange}
             placeholder="0000"
-            className="w-full text-center text-4xl font-bold tracking-[0.5em] py-4 px-6 border-2 border-slate-200 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none transition-all placeholder:text-slate-300 placeholder:tracking-[0.5em]"
+            className={`w-full text-center text-4xl font-bold tracking-[0.5em] py-4 px-6 border-2 border-slate-200 rounded-xl focus:ring-4 outline-none transition-all placeholder:text-slate-300 placeholder:tracking-[0.5em] ${
+              holidayId === 'christmas' ? 'focus:border-green-500 focus:ring-green-100' :
+              holidayId === 'valentines' ? 'focus:border-pink-500 focus:ring-pink-100' :
+              holidayId === 'easter' ? 'focus:border-purple-500 focus:ring-purple-100' :
+              'focus:border-orange-500 focus:ring-orange-100'
+            }`}
             maxLength={4}
             autoFocus
             disabled={isLoading}
@@ -96,7 +146,12 @@ export default function StoreSelect({ onStoreSelect, isLoading }: StoreSelectPro
           <button
             type="submit"
             disabled={storeNumber.length !== 4 || isLoading}
-            className="w-full mt-6 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-green-700 hover:to-green-800 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all active:scale-[0.98] touch-manipulation"
+            className={`w-full mt-6 text-white font-bold py-4 px-6 rounded-xl shadow-lg disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed transition-all active:scale-[0.98] touch-manipulation ${
+              holidayId === 'christmas' ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800' :
+              holidayId === 'valentines' ? 'bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700' :
+              holidayId === 'easter' ? 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700' :
+              'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+            }`}
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">
@@ -120,7 +175,7 @@ export default function StoreSelect({ onStoreSelect, isLoading }: StoreSelectPro
 
       {/* App info */}
       <p className="text-white/60 text-xs mt-8">
-        Target: Clear inventory by Dec 21st
+        {holiday.name} Inventory Management
       </p>
     </div>
   );
