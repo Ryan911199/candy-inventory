@@ -1,13 +1,24 @@
+import { ChevronLeft } from 'lucide-react';
 import { HOLIDAYS, HOLIDAY_ORDER, HolidayId } from '../lib/holidays';
 
 interface HolidaySelectProps {
   onHolidaySelect: (holidayId: HolidayId) => void;
-  storeNumber?: string | null;
+  storeNumber: string;
+  onSwitchStore: () => void;
 }
 
-export default function HolidaySelect({ onHolidaySelect, storeNumber }: HolidaySelectProps) {
+export default function HolidaySelect({ onHolidaySelect, storeNumber, onSwitchStore }: HolidaySelectProps) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-800 via-slate-700 to-slate-900 flex flex-col items-center justify-center p-4">
+      {/* Back button */}
+      <button
+        onClick={onSwitchStore}
+        className="absolute top-4 left-4 flex items-center gap-1 text-white/80 hover:text-white transition-colors z-20"
+      >
+        <ChevronLeft size={20} />
+        <span className="text-sm font-medium">Change Store</span>
+      </button>
+
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-10 left-10 text-4xl opacity-20 animate-pulse">🎄</div>
@@ -29,17 +40,11 @@ export default function HolidaySelect({ onHolidaySelect, storeNumber }: HolidayS
             </div>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800 mb-2">
-            Liability Tracker
+            Store #{storeNumber}
           </h1>
-          {storeNumber ? (
-            <p className="text-slate-500 text-sm">
-              Store #{storeNumber} - Select a holiday
-            </p>
-          ) : (
-            <p className="text-slate-500 text-sm">
-              Select a holiday to track liability
-            </p>
-          )}
+          <p className="text-slate-500 text-sm">
+            Select a holiday to track
+          </p>
         </div>
 
         {/* Holiday Selection Grid */}

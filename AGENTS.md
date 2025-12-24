@@ -98,9 +98,9 @@ interface Item {
 ### Navigation Flow
 
 ```
-Holiday Select → Store Select → Section Select → [Candy | GM | Overview]
-                                       ↑
-                                  Back button
+Store Select → Holiday Select → Section Select → [Candy | GM | Overview]
+                    ↑                  ↑
+              Change Store        Back button
 ```
 
 ## Common Tasks

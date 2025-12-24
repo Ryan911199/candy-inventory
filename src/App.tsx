@@ -48,42 +48,40 @@ function AppContent() {
     }
   }, [holidayId, storeNumber, isCheckingStorage]);
 
-  const handleHolidaySelect = async (id: HolidayId) => {
-    localStorage.setItem(HOLIDAY_KEY, id);
-    setHolidayId(id);
-    
-    // If we already have a store number, ensure the store exists for this holiday
-    if (storeNumber) {
+  const handleStoreSelect = async (number: string) => {
+    // Save to localStorage for next visit
+    localStorage.setItem(STORE_KEY, number);
+    setStoreNumber(number);
+    // If we already have a holiday, go to overview; otherwise stay on / to show holiday select
+    if (holidayId) {
       setIsLoading(true);
       try {
-        await getOrCreateStore(storeNumber, id);
-        // Navigate to overview after holiday is chosen
+        await getOrCreateStore(number, holidayId);
         navigate('/overview');
       } catch (error) {
-        console.error('Failed to load store for holiday:', error);
-        alert('Failed to load store for this holiday. Please try again.');
+        console.error('Failed to load store:', error);
+        alert('Failed to load store. Please try again.');
       } finally {
         setIsLoading(false);
       }
     }
   };
 
-  const handleStoreSelect = async (number: string) => {
-    if (!holidayId) return;
+  const handleHolidaySelect = async (id: HolidayId) => {
+    if (!storeNumber) return;
+    
+    localStorage.setItem(HOLIDAY_KEY, id);
+    setHolidayId(id);
     
     setIsLoading(true);
     try {
       // This will create the store and default locations if they don't exist
-      await getOrCreateStore(number, holidayId);
-
-      // Save to localStorage for next visit
-      localStorage.setItem(STORE_KEY, number);
-      setStoreNumber(number);
-      // Navigate to overview after store is chosen
+      await getOrCreateStore(storeNumber, id);
+      // Navigate to overview after holiday is chosen
       navigate('/overview');
     } catch (error) {
-      console.error('Failed to load store:', error);
-      alert('Failed to load store. Please try again.');
+      console.error('Failed to load store for holiday:', error);
+      alert('Failed to load store for this holiday. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -125,22 +123,31 @@ function AppContent() {
     );
   }
 
+  // Switch store - go back to store selection
+  const handleSwitchStore = () => {
+    localStorage.removeItem(STORE_KEY);
+    setStoreNumber(null);
+    navigate('/');
+  };
+
   return (
     <Routes>
-      {/* Holiday Selection */}
+      {/* Store Selection First */}
       <Route 
         path="/" 
         element={
           holidayId && storeNumber ? (
             <Navigate to="/overview" replace />
-          ) : !holidayId ? (
-            <HolidaySelect onHolidaySelect={handleHolidaySelect} storeNumber={storeNumber} />
-          ) : (
+          ) : !storeNumber ? (
             <StoreSelect 
               onStoreSelect={handleStoreSelect} 
               isLoading={isLoading} 
-              holidayId={holidayId}
-              onSwitchHoliday={handleSwitchHoliday}
+            />
+          ) : (
+            <HolidaySelect 
+              onHolidaySelect={handleHolidaySelect} 
+              storeNumber={storeNumber}
+              onSwitchStore={handleSwitchStore}
             />
           )
         } 
