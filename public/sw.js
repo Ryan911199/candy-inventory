@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pallet-tracker-v2';
+const CACHE_NAME = 'liability-tracker-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

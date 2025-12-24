@@ -107,7 +107,7 @@ export default function StoreSelect({ onStoreSelect, isLoading, holidayId, onSwi
             </div>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800 mb-2">
-            Pallet Tracker
+            Liability Tracker
           </h1>
           <p className="text-slate-500 text-sm">
             {holiday.description}
@@ -175,7 +175,7 @@ export default function StoreSelect({ onStoreSelect, isLoading, holidayId, onSwi
 
       {/* App info */}
       <p className="text-white/60 text-xs mt-8">
-        {holiday.name} Inventory Management
+        {holiday.name} Liability Tracking
       </p>
     </div>
   );

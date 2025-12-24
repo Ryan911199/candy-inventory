@@ -1,10 +1,10 @@
 
 services:
-  candy-inventory:
+  liability-tracker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: candy-inventory
+    container_name: liability-tracker
     restart: unless-stopped
     ports:
       - "3004:80"

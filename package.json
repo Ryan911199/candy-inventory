@@ -1,7 +1,7 @@
 {
-  "name": "candy-inventory",
-  "version": "1.0.0",
-  "description": "A simple candy inventory tracking application.",
+  "name": "liability-tracker",
+  "version": "2.0.0",
+  "description": "Holiday merchandise liability tracking with Candy and GM sections.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "appwrite": "^21.5.0",
     "lucide-react": "^0.556.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "react-router-dom": "^7.11.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",

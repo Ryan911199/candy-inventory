@@ -1,12 +1,16 @@
 // Holiday Configuration System
 // Defines themes, pallet types, and default settings for each holiday
+// Supports Candy and GM (General Merchandise) categories
 
 export type HolidayId = 'christmas' | 'valentines' | 'easter' | 'halloween';
+export type CategoryId = 'candy' | 'gm';
 
 export interface PalletType {
   name: string;
   type: string;
   icon: string;
+  category: CategoryId;
+  isGeneric: boolean; // true = available for all holidays, false = holiday-specific
 }
 
 export interface HolidayTheme {
@@ -44,10 +48,7 @@ export interface HolidayConfig {
   // Visual theme
   theme: HolidayTheme;
   
-  // Pallet types specific to this holiday
-  palletTypes: Record<string, PalletType>;
-  
-  // Default target date (month-day format, e.g., "12-21" or "02-14")
+  // Default target date (month-day format, e.g., "12-22" - 3 days before holiday)
   defaultTargetDate: string;
   
   // Decorative animation type
@@ -57,13 +58,71 @@ export interface HolidayConfig {
   seasonalFloorIcon: string;
 }
 
+// ============================================
+// GENERIC PALLET TYPES (Available for all holidays)
+// ============================================
+
+export const GENERIC_CANDY_PALLETS: Record<string, PalletType> = {
+  candy: { name: 'Candy', type: 'candy', icon: '🍬', category: 'candy', isGeneric: true },
+  candy_pdq: { name: 'PDQ', type: 'candy_pdq', icon: '📦', category: 'candy', isGeneric: true },
+  candy_feature: { name: 'Feature', type: 'candy_feature', icon: '⭐', category: 'candy', isGeneric: true },
+};
+
+export const GENERIC_GM_PALLETS: Record<string, PalletType> = {
+  gm_sidecounter: { name: 'Sidecounter', type: 'gm_sidecounter', icon: '🗄️', category: 'gm', isGeneric: true },
+  gm_pdq: { name: 'PDQ', type: 'gm_pdq', icon: '📦', category: 'gm', isGeneric: true },
+  gm_feature: { name: 'Feature', type: 'gm_feature', icon: '⭐', category: 'gm', isGeneric: true },
+  gm_dumpbin: { name: 'Dump Bin', type: 'gm_dumpbin', icon: '🗑️', category: 'gm', isGeneric: true },
+};
+
+// ============================================
+// HOLIDAY-SPECIFIC PALLET TYPES
+// ============================================
+
+export const CHRISTMAS_CANDY_PALLETS: Record<string, PalletType> = {
+  popcorn: { name: 'Popcorn', type: 'popcorn', icon: '🍿', category: 'candy', isGeneric: false },
+  gingerbread: { name: 'Gingerbread', type: 'gingerbread', icon: '🍪', category: 'candy', isGeneric: false },
+};
+
+export const CHRISTMAS_GM_PALLETS: Record<string, PalletType> = {
+  // Add Christmas-specific GM pallets here as needed
+};
+
+export const VALENTINES_CANDY_PALLETS: Record<string, PalletType> = {
+  // Add Valentine's-specific candy pallets here as needed
+};
+
+export const VALENTINES_GM_PALLETS: Record<string, PalletType> = {
+  // Add Valentine's-specific GM pallets here as needed
+};
+
+export const EASTER_CANDY_PALLETS: Record<string, PalletType> = {
+  // Add Easter-specific candy pallets here as needed
+};
+
+export const EASTER_GM_PALLETS: Record<string, PalletType> = {
+  // Add Easter-specific GM pallets here as needed
+};
+
+export const HALLOWEEN_CANDY_PALLETS: Record<string, PalletType> = {
+  // Add Halloween-specific candy pallets here as needed
+};
+
+export const HALLOWEEN_GM_PALLETS: Record<string, PalletType> = {
+  // Add Halloween-specific GM pallets here as needed
+};
+
+// ============================================
+// HOLIDAY CONFIGURATIONS
+// ============================================
+
 // Christmas Configuration
 const christmasConfig: HolidayConfig = {
   id: 'christmas',
   name: 'Christmas',
   shortName: 'Xmas',
   icon: '🎄',
-  description: 'Christmas Inventory Management',
+  description: 'Christmas Liability Tracking',
   theme: {
     primary: 'red',
     secondary: 'green',
@@ -81,12 +140,7 @@ const christmasConfig: HolidayConfig = {
     statsSecondaryBg: 'bg-green-50 border-green-100',
     statsSecondaryText: 'text-green-700',
   },
-  palletTypes: {
-    candy: { name: 'Candy', type: 'candy', icon: '🍬' },
-    popcorn: { name: 'Popcorn', type: 'popcorn', icon: '🍿' },
-    gingerbread: { name: 'Gingerbread', type: 'gingerbread', icon: '🍪' },
-  },
-  defaultTargetDate: '12-21',
+  defaultTargetDate: '12-21', // 4 days before Dec 25
   animationType: 'snowfall',
   seasonalFloorIcon: '🎄',
 };
@@ -97,7 +151,7 @@ const valentinesConfig: HolidayConfig = {
   name: "Valentine's Day",
   shortName: "V-Day",
   icon: '💝',
-  description: "Valentine's Day Inventory Management",
+  description: "Valentine's Day Liability Tracking",
   theme: {
     primary: 'pink',
     secondary: 'red',
@@ -115,13 +169,7 @@ const valentinesConfig: HolidayConfig = {
     statsSecondaryBg: 'bg-red-50 border-red-100',
     statsSecondaryText: 'text-red-600',
   },
-  palletTypes: {
-    chocolate: { name: 'Chocolate', type: 'chocolate', icon: '🍫' },
-    candy: { name: 'Candy', type: 'candy', icon: '🍬' },
-    plush: { name: 'Plush/Stuffed', type: 'plush', icon: '🧸' },
-    cards: { name: 'Cards', type: 'cards', icon: '💌' },
-  },
-  defaultTargetDate: '02-14',
+  defaultTargetDate: '02-10', // 4 days before Feb 14
   animationType: 'hearts',
   seasonalFloorIcon: '💝',
 };
@@ -132,7 +180,7 @@ const easterConfig: HolidayConfig = {
   name: 'Easter',
   shortName: 'Easter',
   icon: '🐰',
-  description: 'Easter Inventory Management',
+  description: 'Easter Liability Tracking',
   theme: {
     primary: 'purple',
     secondary: 'yellow',
@@ -150,13 +198,7 @@ const easterConfig: HolidayConfig = {
     statsSecondaryBg: 'bg-pink-50 border-pink-100',
     statsSecondaryText: 'text-pink-600',
   },
-  palletTypes: {
-    candy: { name: 'Candy', type: 'candy', icon: '🍬' },
-    chocolate: { name: 'Chocolate', type: 'chocolate', icon: '🍫' },
-    eggs: { name: 'Eggs/Baskets', type: 'eggs', icon: '🥚' },
-    plush: { name: 'Plush', type: 'plush', icon: '🐰' },
-  },
-  defaultTargetDate: '04-20', // Approximate, varies by year
+  defaultTargetDate: '04-16', // 4 days before Apr 20 (Easter varies by year)
   animationType: 'eggs',
   seasonalFloorIcon: '🐰',
 };
@@ -167,7 +209,7 @@ const halloweenConfig: HolidayConfig = {
   name: 'Halloween',
   shortName: "H'ween",
   icon: '🎃',
-  description: 'Halloween Inventory Management',
+  description: 'Halloween Liability Tracking',
   theme: {
     primary: 'orange',
     secondary: 'purple',
@@ -185,13 +227,7 @@ const halloweenConfig: HolidayConfig = {
     statsSecondaryBg: 'bg-purple-50 border-purple-100',
     statsSecondaryText: 'text-purple-600',
   },
-  palletTypes: {
-    candy: { name: 'Candy', type: 'candy', icon: '🍬' },
-    chocolate: { name: 'Chocolate', type: 'chocolate', icon: '🍫' },
-    costumes: { name: 'Costumes', type: 'costumes', icon: '🎭' },
-    decorations: { name: 'Decorations', type: 'decorations', icon: '🎃' },
-  },
-  defaultTargetDate: '10-31',
+  defaultTargetDate: '10-27', // 4 days before Oct 31
   animationType: 'bats',
   seasonalFloorIcon: '🎃',
 };
@@ -207,12 +243,16 @@ export const HOLIDAYS: Record<HolidayId, HolidayConfig> = {
 // Get ordered list of holidays (for display purposes)
 export const HOLIDAY_ORDER: HolidayId[] = ['christmas', 'valentines', 'easter', 'halloween'];
 
-// Helper function to get holiday by ID
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+// Get holiday by ID
 export function getHoliday(id: HolidayId): HolidayConfig {
   return HOLIDAYS[id];
 }
 
-// Helper to get default target date for a holiday
+// Get default target date for a holiday
 export function getHolidayTargetDate(holidayId: HolidayId): string {
   const holiday = HOLIDAYS[holidayId];
   const year = new Date().getFullYear();
@@ -230,13 +270,75 @@ export function getHolidayTargetDate(holidayId: HolidayId): string {
   return `${year}-${month}-${day}`;
 }
 
-// Get pallet types as array for a specific holiday
-export function getPalletTypesArray(holidayId: HolidayId): PalletType[] {
-  return Object.values(HOLIDAYS[holidayId].palletTypes);
+// Get all candy pallet types for a specific holiday (generic + holiday-specific)
+export function getCandyPalletTypes(holidayId: HolidayId): Record<string, PalletType> {
+  const holidaySpecific = {
+    christmas: CHRISTMAS_CANDY_PALLETS,
+    valentines: VALENTINES_CANDY_PALLETS,
+    easter: EASTER_CANDY_PALLETS,
+    halloween: HALLOWEEN_CANDY_PALLETS,
+  }[holidayId] || {};
+  
+  return { ...GENERIC_CANDY_PALLETS, ...holidaySpecific };
 }
 
-// Get first pallet type key for stats display
-export function getPrimaryPalletType(holidayId: HolidayId): string {
-  const types = Object.keys(HOLIDAYS[holidayId].palletTypes);
-  return types[0] || 'candy';
+// Get all GM pallet types for a specific holiday (generic + holiday-specific)
+export function getGMPalletTypes(holidayId: HolidayId): Record<string, PalletType> {
+  const holidaySpecific = {
+    christmas: CHRISTMAS_GM_PALLETS,
+    valentines: VALENTINES_GM_PALLETS,
+    easter: EASTER_GM_PALLETS,
+    halloween: HALLOWEEN_GM_PALLETS,
+  }[holidayId] || {};
+  
+  return { ...GENERIC_GM_PALLETS, ...holidaySpecific };
+}
+
+// Get all pallet types for a holiday (both categories)
+export function getAllPalletTypes(holidayId: HolidayId): Record<string, PalletType> {
+  return {
+    ...getCandyPalletTypes(holidayId),
+    ...getGMPalletTypes(holidayId),
+  };
+}
+
+// Get pallet types as array for a specific holiday and category
+export function getPalletTypesArray(holidayId: HolidayId, category?: CategoryId): PalletType[] {
+  if (category === 'candy') {
+    return Object.values(getCandyPalletTypes(holidayId));
+  }
+  if (category === 'gm') {
+    return Object.values(getGMPalletTypes(holidayId));
+  }
+  return Object.values(getAllPalletTypes(holidayId));
+}
+
+// Get primary pallet type key for stats display
+export function getPrimaryPalletType(holidayId: HolidayId, category?: CategoryId): string {
+  if (category === 'candy') {
+    const types = getCandyPalletTypes(holidayId);
+    return Object.keys(types)[0] || 'candy';
+  }
+  if (category === 'gm') {
+    const types = getGMPalletTypes(holidayId);
+    return Object.keys(types)[0] || 'gm_sidecounter';
+  }
+  return 'candy';
+}
+
+// Category display info
+export const CATEGORIES: Record<CategoryId, { name: string; icon: string; description: string }> = {
+  candy: { name: 'Candy', icon: '🍬', description: 'Seasonal candy and food items' },
+  gm: { name: 'GM', icon: '🎁', description: 'General merchandise and non-food items' },
+};
+
+// Legacy compatibility - get all pallet types for a holiday (used by existing code)
+// This returns a flat object like the old palletTypes field
+export function getLegacyPalletTypes(holidayId: HolidayId): Record<string, { name: string; type: string; icon: string }> {
+  const allTypes = getAllPalletTypes(holidayId);
+  const legacy: Record<string, { name: string; type: string; icon: string }> = {};
+  for (const [key, value] of Object.entries(allTypes)) {
+    legacy[key] = { name: value.name, type: value.type, icon: value.icon };
+  }
+  return legacy;
 }

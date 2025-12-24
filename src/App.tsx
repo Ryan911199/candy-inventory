@@ -1,19 +1,24 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HolidaySelect from './components/HolidaySelect';
 import StoreSelect from './components/StoreSelect';
-import Inventory from './components/Inventory';
+import SectionSelect from './components/SectionSelect';
+import CategoryInventory from './components/CategoryInventory';
+import Overview from './components/Overview';
 import { getOrCreateStore } from './lib/appwrite';
 import { HolidayId, HOLIDAYS } from './lib/holidays';
 
 // Storage keys for remembering state
-const STORE_KEY = 'candy-inventory-store';
-const HOLIDAY_KEY = 'candy-inventory-holiday';
+const STORE_KEY = 'liability-tracker-store';
+const HOLIDAY_KEY = 'liability-tracker-holiday';
 
-export default function App() {
+// Main app content with routing logic
+function AppContent() {
   const [holidayId, setHolidayId] = useState<HolidayId | null>(null);
   const [storeNumber, setStoreNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStorage, setIsCheckingStorage] = useState(true);
+  const navigate = useNavigate();
 
   // Check for stored state on mount
   useEffect(() => {
@@ -52,6 +57,8 @@ export default function App() {
       setIsLoading(true);
       try {
         await getOrCreateStore(storeNumber, id);
+        // Navigate to overview after holiday is chosen
+        navigate('/overview');
       } catch (error) {
         console.error('Failed to load store for holiday:', error);
         alert('Failed to load store for this holiday. Please try again.');
@@ -72,6 +79,8 @@ export default function App() {
       // Save to localStorage for next visit
       localStorage.setItem(STORE_KEY, number);
       setStoreNumber(number);
+      // Navigate to overview after store is chosen
+      navigate('/overview');
     } catch (error) {
       console.error('Failed to load store:', error);
       alert('Failed to load store. Please try again.');
@@ -86,13 +95,19 @@ export default function App() {
     localStorage.removeItem(HOLIDAY_KEY);
     setStoreNumber(null);
     setHolidayId(null);
+    navigate('/');
   };
 
   // Switch holiday keeps the same store number
   const handleSwitchHoliday = () => {
     localStorage.removeItem(HOLIDAY_KEY);
     setHolidayId(null);
-    // Keep storeNumber so user doesn't have to re-enter it
+    navigate('/');
+  };
+
+  // Go back to section select
+  const handleBackToSections = () => {
+    navigate('/section');
   };
 
   // Show holiday-agnostic loading screen while checking storage
@@ -110,30 +125,110 @@ export default function App() {
     );
   }
 
-  // Show holiday selection if no holiday selected
-  if (!holidayId) {
-    return <HolidaySelect onHolidaySelect={handleHolidaySelect} storeNumber={storeNumber} />;
-  }
-
-  // Show store selection if no store selected
-  if (!storeNumber) {
-    return (
-      <StoreSelect 
-        onStoreSelect={handleStoreSelect} 
-        isLoading={isLoading} 
-        holidayId={holidayId}
-        onSwitchHoliday={handleSwitchHoliday}
-      />
-    );
-  }
-
-  // Show inventory for selected store and holiday
   return (
-    <Inventory 
-      storeNumber={storeNumber} 
-      holidayId={holidayId}
-      onLogout={handleLogout} 
-      onSwitchHoliday={handleSwitchHoliday}
-    />
+    <Routes>
+      {/* Holiday Selection */}
+      <Route 
+        path="/" 
+        element={
+          holidayId && storeNumber ? (
+            <Navigate to="/overview" replace />
+          ) : !holidayId ? (
+            <HolidaySelect onHolidaySelect={handleHolidaySelect} storeNumber={storeNumber} />
+          ) : (
+            <StoreSelect 
+              onStoreSelect={handleStoreSelect} 
+              isLoading={isLoading} 
+              holidayId={holidayId}
+              onSwitchHoliday={handleSwitchHoliday}
+            />
+          )
+        } 
+      />
+
+      {/* Section Selection (Candy, GM, Overview) */}
+      <Route 
+        path="/section" 
+        element={
+          holidayId && storeNumber ? (
+            <SectionSelect 
+              holidayId={holidayId}
+              storeNumber={storeNumber}
+              onLogout={handleLogout}
+              onSwitchHoliday={handleSwitchHoliday}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } 
+      />
+
+      {/* Candy Section */}
+      <Route 
+        path="/candy" 
+        element={
+          holidayId && storeNumber ? (
+            <CategoryInventory 
+              storeNumber={storeNumber}
+              holidayId={holidayId}
+              category="candy"
+              onLogout={handleLogout}
+              onSwitchHoliday={handleSwitchHoliday}
+              onBack={handleBackToSections}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } 
+      />
+
+      {/* GM Inventory */}
+      <Route 
+        path="/gm" 
+        element={
+          holidayId && storeNumber ? (
+            <CategoryInventory 
+              storeNumber={storeNumber}
+              holidayId={holidayId}
+              category="gm"
+              onLogout={handleLogout}
+              onSwitchHoliday={handleSwitchHoliday}
+              onBack={handleBackToSections}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } 
+      />
+
+      {/* Overview */}
+      <Route 
+        path="/overview" 
+        element={
+          holidayId && storeNumber ? (
+            <Overview 
+              storeNumber={storeNumber}
+              holidayId={holidayId}
+              onLogout={handleLogout}
+              onSwitchHoliday={handleSwitchHoliday}
+              onBack={handleBackToSections}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } 
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }

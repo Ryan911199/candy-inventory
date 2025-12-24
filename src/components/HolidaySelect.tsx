@@ -29,7 +29,7 @@ export default function HolidaySelect({ onHolidaySelect, storeNumber }: HolidayS
             </div>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800 mb-2">
-            Pallet Tracker
+            Liability Tracker
           </h1>
           {storeNumber ? (
             <p className="text-slate-500 text-sm">
@@ -37,7 +37,7 @@ export default function HolidaySelect({ onHolidaySelect, storeNumber }: HolidayS
             </p>
           ) : (
             <p className="text-slate-500 text-sm">
-              Select a holiday to manage inventory
+              Select a holiday to track liability
             </p>
           )}
         </div>
@@ -69,13 +69,13 @@ export default function HolidaySelect({ onHolidaySelect, storeNumber }: HolidayS
 
         {/* Footer hint */}
         <p className="text-center text-slate-400 text-xs">
-          Each holiday tracks its own inventory separately
+          Each holiday tracks Candy & GM separately
         </p>
       </div>
 
       {/* App info */}
       <p className="text-white/60 text-xs mt-8 z-10">
-        Seasonal Inventory Management System
+        Holiday Liability Tracking System
       </p>
     </div>
   );

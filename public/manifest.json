@@ -1,11 +1,11 @@
 {
-  "name": "Pallet Tracker - Christmas Inventory",
-  "short_name": "Pallet Tracker",
-  "description": "Track Christmas candy, popcorn, and gingerbread inventory across store locations with real-time sync.",
+  "name": "Liability Tracker - Holiday Merchandise",
+  "short_name": "Liability Tracker",
+  "description": "Track holiday merchandise liability - Candy and GM sections with real-time sync across store locations.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
-  "theme_color": "#b91c1c",
+  "theme_color": "#334155",
   "orientation": "portrait-primary",
   "categories": ["business", "productivity"],
   "icons": [
