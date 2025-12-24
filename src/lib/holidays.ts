@@ -64,15 +64,12 @@ export interface HolidayConfig {
 
 export const GENERIC_CANDY_PALLETS: Record<string, PalletType> = {
   candy: { name: 'Candy', type: 'candy', icon: '🍬', category: 'candy', isGeneric: true },
-  candy_pdq: { name: 'PDQ', type: 'candy_pdq', icon: '📦', category: 'candy', isGeneric: true },
   candy_feature: { name: 'Feature', type: 'candy_feature', icon: '⭐', category: 'candy', isGeneric: true },
 };
 
 export const GENERIC_GM_PALLETS: Record<string, PalletType> = {
   gm_sidecounter: { name: 'Sidecounter', type: 'gm_sidecounter', icon: '🗄️', category: 'gm', isGeneric: true },
-  gm_pdq: { name: 'PDQ', type: 'gm_pdq', icon: '📦', category: 'gm', isGeneric: true },
   gm_feature: { name: 'Feature', type: 'gm_feature', icon: '⭐', category: 'gm', isGeneric: true },
-  gm_dumpbin: { name: 'Dump Bin', type: 'gm_dumpbin', icon: '🗑️', category: 'gm', isGeneric: true },
 };
 
 // ============================================
