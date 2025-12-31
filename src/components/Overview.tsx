@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LogOut, ArrowLeft, Calendar, TrendingDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   Store,
   Item,
-  subscribeToStore,
-  getItems,
   getDefaultTargetDate,
 } from '../lib/appwrite';
+import { useDataCache } from '../context';
 import { 
   HolidayId, 
   HOLIDAYS, 
@@ -40,13 +39,29 @@ export default function Overview({
   onBack 
 }: OverviewProps) {
   const navigate = useNavigate();
+  const dataCache = useDataCache();
   const holiday = HOLIDAYS[holidayId];
   const { theme } = holiday;
 
-  const [store, setStore] = useState<Store | null>(null);
-  const [candyItems, setCandyItems] = useState<Item[]>([]);
-  const [gmItems, setGmItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Initialize from cache immediately (instant if data was preloaded)
+  const [store, setStore] = useState<Store | null>(() => 
+    dataCache.getStoreData(storeNumber, holidayId)
+  );
+  const [candyItems, setCandyItems] = useState<Item[]>(() => 
+    dataCache.getItemsData(storeNumber, holidayId, 'candy')
+  );
+  const [gmItems, setGmItems] = useState<Item[]>(() => 
+    dataCache.getItemsData(storeNumber, holidayId, 'gm')
+  );
+  
+  // Only show loading if we don't have any cached data
+  const [loading, setLoading] = useState(() => {
+    const hasCandyData = dataCache.getItemsData(storeNumber, holidayId, 'candy').length > 0;
+    const hasGmData = dataCache.getItemsData(storeNumber, holidayId, 'gm').length > 0;
+    const hasStore = dataCache.getStoreData(storeNumber, holidayId) !== null;
+    // Show loading only if we have no data at all
+    return !hasStore && !hasCandyData && !hasGmData;
+  });
 
   // Get target date from store or use default
   const targetDate = store?.targetDate || getDefaultTargetDate(holidayId);
@@ -54,36 +69,57 @@ export default function Overview({
   // Calculate days remaining using utility function
   const daysRemaining = calculateDaysRemaining(targetDate);
 
-  // Subscribe to store data
+  // Subscribe to store data using cache
   useEffect(() => {
-    const unsubStore = subscribeToStore(storeNumber, holidayId, (storeData: Store | null) => {
+    const unsubStore = dataCache.subscribeStore(storeNumber, holidayId, (storeData: Store | null) => {
       setStore(storeData);
     });
 
     return () => {
       unsubStore();
     };
-  }, [storeNumber, holidayId]);
+  }, [storeNumber, holidayId, dataCache]);
 
-  // Fetch items for both categories
+  // Subscribe to items for both categories using cache
   useEffect(() => {
-    async function fetchItems() {
-      setLoading(true);
-      try {
-        const [candy, gm] = await Promise.all([
-          getItems(storeNumber, holidayId, 'candy'),
-          getItems(storeNumber, holidayId, 'gm'),
-        ]);
-        setCandyItems(candy);
-        setGmItems(gm);
-      } catch (error) {
-        console.error('Failed to fetch items:', error);
-      } finally {
+    // Track if both subscriptions have delivered data
+    let candyLoaded = dataCache.getItemsData(storeNumber, holidayId, 'candy').length > 0;
+    let gmLoaded = dataCache.getItemsData(storeNumber, holidayId, 'gm').length > 0;
+    
+    const checkLoading = () => {
+      if (candyLoaded || gmLoaded) {
         setLoading(false);
       }
-    }
-    fetchItems();
-  }, [storeNumber, holidayId]);
+    };
+
+    const unsubCandy = dataCache.subscribeItems(storeNumber, holidayId, 'candy', (items) => {
+      setCandyItems(items);
+      candyLoaded = true;
+      checkLoading();
+    });
+
+    const unsubGm = dataCache.subscribeItems(storeNumber, holidayId, 'gm', (items) => {
+      setGmItems(items);
+      gmLoaded = true;
+      checkLoading();
+    });
+
+    return () => {
+      unsubCandy();
+      unsubGm();
+    };
+  }, [storeNumber, holidayId, dataCache]);
+  
+  // Prefetch data for candy/gm pages on hover
+  const prefetchCandy = useCallback(() => {
+    dataCache.preloadItems(storeNumber, holidayId, 'candy');
+    dataCache.preloadLocations(storeNumber);
+  }, [storeNumber, holidayId, dataCache]);
+  
+  const prefetchGm = useCallback(() => {
+    dataCache.preloadItems(storeNumber, holidayId, 'gm');
+    dataCache.preloadLocations(storeNumber);
+  }, [storeNumber, holidayId, dataCache]);
 
   // Calculate stats for a category
   const calculateStats = (items: Item[], category: CategoryId): CategoryStats => {
@@ -217,6 +253,8 @@ export default function Overview({
         {/* Candy Section Card */}
         <button
           onClick={() => navigate('/candy')}
+          onMouseEnter={prefetchCandy}
+          onFocus={prefetchCandy}
           className="w-full bg-white/95 rounded-2xl shadow-lg p-4 mb-4 text-left hover:bg-white transition-colors"
         >
           <div className="flex items-center justify-between mb-3">
@@ -254,6 +292,8 @@ export default function Overview({
         {/* GM Section Card */}
         <button
           onClick={() => navigate('/gm')}
+          onMouseEnter={prefetchGm}
+          onFocus={prefetchGm}
           className="w-full bg-white/95 rounded-2xl shadow-lg p-4 mb-4 text-left hover:bg-white transition-colors"
         >
           <div className="flex items-center justify-between mb-3">
@@ -292,6 +332,8 @@ export default function Overview({
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => navigate('/candy')}
+            onMouseEnter={prefetchCandy}
+            onFocus={prefetchCandy}
             className="bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-xl p-4 font-bold shadow-lg hover:from-pink-600 hover:to-red-600 transition-all"
           >
             <span className="text-2xl block mb-1">🍬</span>
@@ -299,6 +341,8 @@ export default function Overview({
           </button>
           <button
             onClick={() => navigate('/gm')}
+            onMouseEnter={prefetchGm}
+            onFocus={prefetchGm}
             className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl p-4 font-bold shadow-lg hover:from-blue-600 hover:to-indigo-600 transition-all"
           >
             <span className="text-2xl block mb-1">🎁</span>

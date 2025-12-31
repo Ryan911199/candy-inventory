@@ -1,13 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Store,
   Location,
   Item,
-  subscribeToStore,
-  subscribeToItems,
-  subscribeToLocations,
   getDefaultTargetDate,
 } from '../lib/appwrite';
+import { useDataCache } from '../context';
 import { HolidayId, CategoryId, getCandyPalletTypes, getGMPalletTypes, getPrimaryPalletType } from '../lib/holidays';
 import { calculateDaysRemaining, calculatePerDayRate } from '../lib/dateUtils';
 import { usePendingUpdates } from './usePendingUpdates';
@@ -36,52 +34,74 @@ interface UseInventoryDataResult {
 
 /**
  * Hook for managing inventory data subscriptions and state
+ * Uses centralized DataCache for instant data access and background updates
  */
 export function useInventoryData(
   storeNumber: string,
   holidayId: HolidayId,
   category: CategoryId
 ): UseInventoryDataResult {
-  const [store, setStore] = useState<Store | null>(null);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dataCache = useDataCache();
+  
+  // Initialize state from cache immediately (no loading flash if data is cached)
+  const [store, setStore] = useState<Store | null>(() => 
+    dataCache.getStoreData(storeNumber, holidayId)
+  );
+  const [locations, setLocations] = useState<Location[]>(() => 
+    dataCache.getLocationsData(storeNumber)
+  );
+  const [items, setItems] = useState<Item[]>(() => 
+    dataCache.getItemsData(storeNumber, holidayId, category)
+  );
+  
+  // Only show loading if we don't have cached data
+  const [loading, setLoading] = useState(() => {
+    const hasLocations = dataCache.getLocationsData(storeNumber).length > 0;
+    return !hasLocations;
+  });
 
   const pendingUpdates = usePendingUpdates();
 
   // Get pallet types for this category
-  const ITEM_TYPES = category === 'candy' 
-    ? getCandyPalletTypes(holidayId) 
-    : getGMPalletTypes(holidayId);
+  const ITEM_TYPES = useMemo(() => 
+    category === 'candy' 
+      ? getCandyPalletTypes(holidayId) 
+      : getGMPalletTypes(holidayId),
+    [category, holidayId]
+  );
 
   // Get target date from store or use default
   const targetDate = store?.targetDate || getDefaultTargetDate(holidayId);
 
-  // Subscribe to store data
+  // Subscribe to store data using cache
   useEffect(() => {
-    const unsubStore = subscribeToStore(storeNumber, holidayId, (storeData: Store | null) => {
+    const unsubStore = dataCache.subscribeStore(storeNumber, holidayId, (storeData: Store | null) => {
       setStore(storeData);
     });
 
     return () => {
       unsubStore();
     };
-  }, [storeNumber, holidayId]);
+  }, [storeNumber, holidayId, dataCache]);
 
-  // Subscribe to realtime updates for locations and items
+  // Subscribe to realtime updates for locations and items using cache
   useEffect(() => {
-    setLoading(true);
+    // Only set loading if we don't have cached data
+    const cachedLocations = dataCache.getLocationsData(storeNumber);
+    if (cachedLocations.length === 0) {
+      setLoading(true);
+    }
 
-    const unsubLocations = subscribeToLocations(storeNumber, (locs) => {
+    const unsubLocations = dataCache.subscribeLocations(storeNumber, (locs) => {
       setLocations(locs);
       setLoading(false);
     });
 
-    const unsubItems = subscribeToItems(storeNumber, (serverItems) => {
+    const unsubItems = dataCache.subscribeItems(storeNumber, holidayId, category, (serverItems) => {
       // Merge server data with pending local updates to prevent race conditions
       const mergedItems = pendingUpdates.mergeWithServerItems(serverItems);
       setItems(mergedItems);
-    }, holidayId, category);
+    });
 
     return () => {
       unsubLocations();
@@ -89,7 +109,7 @@ export function useInventoryData(
     };
     // Note: pendingUpdates is stable (uses useRef internally) so we don't need it in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeNumber, holidayId, category]);
+  }, [storeNumber, holidayId, category, dataCache]);
 
   // Calculate stats
   const stats: InventoryStats = (() => {

@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import HolidaySelect from './components/HolidaySelect';
 import StoreSelect from './components/StoreSelect';
 import SectionSelect from './components/SectionSelect';
 import CategoryInventory from './components/CategoryInventory';
 import Overview from './components/Overview';
-import { getOrCreateStore } from './lib/appwrite';
+import Feedback from './components/Feedback';
+import { DataCacheProvider, useDataCache } from './context';
 import { HolidayId, HOLIDAYS } from './lib/holidays';
 
 // Storage keys for remembering state
@@ -19,8 +20,9 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStorage, setIsCheckingStorage] = useState(true);
   const navigate = useNavigate();
+  const dataCache = useDataCache();
 
-  // Check for stored state on mount
+  // Check for stored state on mount - synchronous localStorage read
   useEffect(() => {
     const storedStore = localStorage.getItem(STORE_KEY);
     const storedHoliday = localStorage.getItem(HOLIDAY_KEY) as HolidayId | null;
@@ -31,32 +33,41 @@ function AppContent() {
     if (storedStore) {
       setStoreNumber(storedStore);
     }
+    
+    // If we have both, start preloading immediately (don't wait for render)
+    if (storedStore && storedHoliday && HOLIDAYS[storedHoliday]) {
+      // Fire off preload requests immediately - don't block UI
+      dataCache.preloadAllForHoliday(storedStore, storedHoliday);
+      // Also ensure store exists in background
+      dataCache.ensureStore(storedStore, storedHoliday).catch(console.error);
+    }
+    
     setIsCheckingStorage(false);
-  }, []);
+  }, [dataCache]);
 
-  // When holiday changes and we have a store, ensure the store exists for that holiday
+  // Preload data when holiday/store changes (but don't block)
   useEffect(() => {
     if (holidayId && storeNumber && !isCheckingStorage) {
-      setIsLoading(true);
-      getOrCreateStore(storeNumber, holidayId)
-        .catch((error) => {
-          console.error('Failed to load store for holiday:', error);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
+      // Preload all data in background - this makes navigation instant
+      dataCache.preloadAllForHoliday(storeNumber, holidayId);
     }
-  }, [holidayId, storeNumber, isCheckingStorage]);
+  }, [holidayId, storeNumber, isCheckingStorage, dataCache]);
 
-  const handleStoreSelect = async (number: string) => {
+  const handleStoreSelect = useCallback(async (number: string) => {
     // Save to localStorage for next visit
     localStorage.setItem(STORE_KEY, number);
     setStoreNumber(number);
-    // If we already have a holiday, go to overview; otherwise stay on / to show holiday select
+    
+    // Start preloading locations immediately (shared across holidays)
+    dataCache.preloadLocations(number);
+    
+    // If we already have a holiday, go to overview
     if (holidayId) {
       setIsLoading(true);
       try {
-        await getOrCreateStore(number, holidayId);
+        // Ensure store exists and preload all data in parallel
+        await dataCache.ensureStore(number, holidayId);
+        dataCache.preloadAllForHoliday(number, holidayId);
         navigate('/overview');
       } catch (error) {
         console.error('Failed to load store:', error);
@@ -65,18 +76,21 @@ function AppContent() {
         setIsLoading(false);
       }
     }
-  };
+  }, [holidayId, navigate, dataCache]);
 
-  const handleHolidaySelect = async (id: HolidayId) => {
+  const handleHolidaySelect = useCallback(async (id: HolidayId) => {
     if (!storeNumber) return;
     
     localStorage.setItem(HOLIDAY_KEY, id);
     setHolidayId(id);
     
+    // Start preloading immediately while we ensure store exists
+    dataCache.preloadAllForHoliday(storeNumber, id);
+    
     setIsLoading(true);
     try {
       // This will create the store and default locations if they don't exist
-      await getOrCreateStore(storeNumber, id);
+      await dataCache.ensureStore(storeNumber, id);
       // Navigate to overview after holiday is chosen
       navigate('/overview');
     } catch (error) {
@@ -85,28 +99,36 @@ function AppContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [storeNumber, navigate, dataCache]);
 
   // Logout clears store - user needs to enter a new store number
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem(STORE_KEY);
     localStorage.removeItem(HOLIDAY_KEY);
     setStoreNumber(null);
     setHolidayId(null);
     navigate('/');
-  };
+  }, [navigate]);
 
   // Switch holiday keeps the same store number
-  const handleSwitchHoliday = () => {
+  const handleSwitchHoliday = useCallback(() => {
     localStorage.removeItem(HOLIDAY_KEY);
     setHolidayId(null);
     navigate('/');
-  };
+  }, [navigate]);
 
   // Go back to section select
-  const handleBackToSections = () => {
+  const handleBackToSections = useCallback(() => {
     navigate('/section');
-  };
+  }, [navigate]);
+
+  // Switch store - go back to store selection
+  // IMPORTANT: This must be defined BEFORE any early returns to comply with React's Rules of Hooks
+  const handleSwitchStore = useCallback(() => {
+    localStorage.removeItem(STORE_KEY);
+    setStoreNumber(null);
+    navigate('/');
+  }, [navigate]);
 
   // Show holiday-agnostic loading screen while checking storage
   if (isCheckingStorage) {
@@ -122,13 +144,6 @@ function AppContent() {
       </div>
     );
   }
-
-  // Switch store - go back to store selection
-  const handleSwitchStore = () => {
-    localStorage.removeItem(STORE_KEY);
-    setStoreNumber(null);
-    navigate('/');
-  };
 
   return (
     <Routes>
@@ -226,6 +241,24 @@ function AppContent() {
         } 
       />
 
+      {/* Feedback */}
+      <Route 
+        path="/feedback" 
+        element={
+          holidayId && storeNumber ? (
+            <Feedback 
+              storeNumber={storeNumber}
+              holidayId={holidayId}
+              onLogout={handleLogout}
+              onSwitchHoliday={handleSwitchHoliday}
+              onBack={handleBackToSections}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        } 
+      />
+
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -235,7 +268,9 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <DataCacheProvider>
+        <AppContent />
+      </DataCacheProvider>
     </BrowserRouter>
   );
 }

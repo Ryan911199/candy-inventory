@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { HOLIDAYS, HOLIDAY_ORDER, HolidayId } from '../lib/holidays';
+import { useDataCache } from '../context';
 
 interface HolidaySelectProps {
   onHolidaySelect: (holidayId: HolidayId) => void;
@@ -8,6 +10,12 @@ interface HolidaySelectProps {
 }
 
 export default function HolidaySelect({ onHolidaySelect, storeNumber, onSwitchStore }: HolidaySelectProps) {
+  const dataCache = useDataCache();
+
+  // Prefetch data for a holiday on hover - makes selection feel instant
+  const prefetchHoliday = useCallback((holidayId: HolidayId) => {
+    dataCache.preloadAllForHoliday(storeNumber, holidayId);
+  }, [storeNumber, dataCache]);
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-800 via-slate-700 to-slate-900 flex flex-col items-center justify-center p-4">
       {/* Back button */}
@@ -55,6 +63,8 @@ export default function HolidaySelect({ onHolidaySelect, storeNumber, onSwitchSt
               <button
                 key={holidayId}
                 onClick={() => onHolidaySelect(holidayId)}
+                onMouseEnter={() => prefetchHoliday(holidayId)}
+                onFocus={() => prefetchHoliday(holidayId)}
                 className={`
                   relative flex flex-col items-center justify-center p-4 rounded-2xl
                   border-2 transition-all duration-200

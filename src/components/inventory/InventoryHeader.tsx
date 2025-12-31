@@ -11,6 +11,7 @@ import {
   Candy,
   Gift,
   BarChart3,
+  MessageSquare,
 } from 'lucide-react';
 import { HolidayConfig } from '../../lib/holidays';
 import { formatTargetDate } from '../../lib/dateUtils';
@@ -26,12 +27,13 @@ interface InventoryHeaderProps {
   onSwitchHoliday: () => void;
 }
 
-type NavSection = 'candy' | 'gm' | 'overview';
+type NavSection = 'candy' | 'gm' | 'overview' | 'feedback';
 
 const NAV_SECTIONS: { id: NavSection; label: string; icon: React.ReactNode; route: string }[] = [
   { id: 'candy', label: 'Candy', icon: <Candy size={16} />, route: '/candy' },
   { id: 'gm', label: 'GM', icon: <Gift size={16} />, route: '/gm' },
   { id: 'overview', label: 'Overview', icon: <BarChart3 size={16} />, route: '/overview' },
+  { id: 'feedback', label: 'Feedback', icon: <MessageSquare size={16} />, route: '/feedback' },
 ];
 
 export function InventoryHeader({
@@ -53,6 +55,7 @@ export function InventoryHeader({
   const getActiveSection = (): NavSection => {
     if (location.pathname === '/overview') return 'overview';
     if (location.pathname === '/gm') return 'gm';
+    if (location.pathname === '/feedback') return 'feedback';
     return 'candy'; // default
   };
 

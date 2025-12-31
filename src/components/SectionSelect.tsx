@@ -1,6 +1,8 @@
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
-import { HolidayId, HOLIDAYS } from '../lib/holidays';
+import { HolidayId, HOLIDAYS, CategoryId } from '../lib/holidays';
+import { useDataCache } from '../context';
 
 interface SectionSelectProps {
   holidayId: HolidayId;
@@ -11,8 +13,22 @@ interface SectionSelectProps {
 
 export default function SectionSelect({ holidayId, storeNumber, onLogout, onSwitchHoliday }: SectionSelectProps) {
   const navigate = useNavigate();
+  const dataCache = useDataCache();
   const holiday = HOLIDAYS[holidayId];
   const { theme } = holiday;
+
+  // Prefetch data on hover for instant navigation
+  const prefetchSection = useCallback((sectionId: string) => {
+    if (sectionId === 'candy' || sectionId === 'gm') {
+      dataCache.preloadItems(storeNumber, holidayId, sectionId as CategoryId);
+      dataCache.preloadLocations(storeNumber);
+    } else if (sectionId === 'overview') {
+      // Overview needs both candy and gm items
+      dataCache.preloadItems(storeNumber, holidayId, 'candy');
+      dataCache.preloadItems(storeNumber, holidayId, 'gm');
+    }
+    dataCache.preloadStore(storeNumber, holidayId);
+  }, [storeNumber, holidayId, dataCache]);
 
   const sections = [
     {
@@ -87,6 +103,8 @@ export default function SectionSelect({ holidayId, storeNumber, onLogout, onSwit
             <button
               key={section.id}
               onClick={() => navigate(section.path)}
+              onMouseEnter={() => prefetchSection(section.id)}
+              onFocus={() => prefetchSection(section.id)}
               className={`
                 bg-gradient-to-r ${section.color} ${section.hoverColor}
                 text-white rounded-2xl p-6 shadow-lg
